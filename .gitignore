@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+
+data/*.db
+data/backups/
+logs/
+temp/
+uploads/
+cache/
+
+.vscode/

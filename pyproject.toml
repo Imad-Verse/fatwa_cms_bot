@@ -1,0 +1,22 @@
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+fix = false
+exclude = [
+    ".venv",
+    "assets",
+    "cache",
+    "data",
+    "logs",
+    "temp",
+    "uploads",
+]
+extend-exclude = [
+    "*.bak",
+    "*.mojibake*",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+# Start with high-signal rules only (runtime and syntax-level issues).
+select = ["F", "E9"]
