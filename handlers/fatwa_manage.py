@@ -16,6 +16,7 @@ from core.utils import (
     escape_markdown,
     safe_reply_text,
     safe_edit_message_text,
+    is_valid_url,
 )
 from core.keyboards import (
     create_fatwa_view_keyboard,
