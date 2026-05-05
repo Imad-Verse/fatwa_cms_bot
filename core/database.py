@@ -1,4 +1,4 @@
-﻿"""
+"""
 Ù…Ù„Ù Ø¥Ø¯Ø§Ø±Ø© Ù‚Ø§Ø¹Ø¯Ø© Ø§Ù„Ø¨ÙŠØ§Ù†Ø§Øª (database.py)
 --------------------------------------
 ÙŠØ­ØªÙˆÙŠ Ø¹Ù„Ù‰ ÙØ¦Ø© FatwaDatabaseManager Ø§Ù„ØªÙŠ ØªØ¯ÙŠØ± Ø¹Ù…Ù„ÙŠØ§Øª SQLite Ø§Ù„Ø®Ø§ØµØ© Ø¨Ø¨ÙŠØ§Ù†Ø§Øª Ø§Ù„ÙØªØ§ÙˆÙ‰ ÙÙ‚Ø·:
@@ -328,7 +328,7 @@ class FatwaDatabaseManager:
                     '''INSERT INTO fatwas
                         (fatwa_number, title, question, answer, normalized_answer, status, views, scholar_id, source_title_id, created_at)
                         VALUES (?, ?, ?, ?, NORMALIZE_TEXT(?), ?, ?, ?, ?, CURRENT_TIMESTAMP)''',
-                    (fatwa_num, data['title'], question_text, answer_text, answer_text, 'draft', 0, scholar_id, source_title_id)
+                    (fatwa_num, data['title'], question_text, answer_text, answer_text, data.get('status', 'draft'), 0, scholar_id, source_title_id)
                 )
                 fatwa_id = c.lastrowid
                 # 5. Ø§Ù„ØªØµÙ†ÙŠÙØ§Øª ÙˆØ§Ù„Ù…ÙˆØ§Ø¶ÙŠØ¹ (Many-to-Many)

@@ -173,6 +173,7 @@ class FatwaCreatePayload(BaseModel):
     source_title: str = ""
     source_url: Optional[str] = None
     audio_url: Optional[str] = None
+    status: Optional[str] = "published"
     classifications: List[Dict[str, Any]] = Field(default_factory=list)
 
 
@@ -232,6 +233,7 @@ def _fatwa_to_api(fatwa: Dict[str, Any]) -> Dict[str, Any]:
         "audio_link": fatwa.get("audio_url"),
         "categories": _dedupe(categories),
         "topics": _dedupe([t for t in topics if t]),
+        "classifications": classifications,
     }
 
 
@@ -771,3 +773,35 @@ def update_fatwa(
         raise HTTPException(status_code=404, detail="Not found")
     fatwa = fatwa_db.get_fatwa(fatwa_id)
     return {"item": _fatwa_to_api(fatwa)}
+
+
+@app.delete("/api/admin/fatwas/{fatwa_id}")
+def delete_fatwa(
+    fatwa_id: int, user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    _require_admin(user)
+    success = fatwa_db.delete_fatwa(fatwa_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Not found")
+    return {"status": "success"}
+
+
+@app.post("/api/admin/fatwas/suggest-tags")
+async def suggest_tags(
+    payload: Dict[str, str], user: Dict[str, Any] = Depends(get_current_user)
+) -> Dict[str, Any]:
+    _require_admin(user)
+    text = payload.get("text", "")
+    if not text:
+        raise HTTPException(status_code=400, detail="Missing text")
+
+    # This will call the existing AI extraction logic from search.py 
+    # but we need to import it or implement a similar one for tagging.
+    # For now, let's implement a simple version here or call handlers.search.
+    from handlers.search import _request_ai_query_terms
+    
+    queries, error = _request_ai_query_terms(text)
+    if error:
+        return {"items": [], "error": error}
+    
+    return {"suggestions": queries}
