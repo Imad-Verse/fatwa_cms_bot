@@ -52,12 +52,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     fatwa = fatwa_db.get_fatwa(fatwa_number)
                 if not fatwa:
                     raise ValueError("Fatwa not found")
-                from handlers.fatwa import send_fatwa_message
+                from handlers.fatwa_view import send_fatwa_message
                 await send_fatwa_message(update, context, fatwa['id'])
                 return ConversationHandler.END
             except Exception as e:
                 logger.error(f"Deep link error: {e}")
                 # Fallback to normal start if error
+
 
         # Rate limiting
         if not rate_limiter.is_allowed(user_id):

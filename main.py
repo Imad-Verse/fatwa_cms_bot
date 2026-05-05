@@ -53,20 +53,14 @@ from handlers.general import (
 from handlers.search import (
     search_conv, handle_search_pagination, search_latest, search_popular, show_scholar_fatwas_by_id
 )
-# استيراد المعالجات
-from handlers.general import (
-    start, help_info, cancel_operation, back_to_main, start_refresh, error_handler,
-    how_to_add_bot, our_bots, noop, show_add_bot_tutorial
+from handlers.fatwa_view import (
+    view_fatwa, show_related_fatwas, show_random_fatwa, continue_reading_fatwa, copy_fatwa_full
 )
-from handlers.search import (
-    search_conv, handle_search_pagination, search_latest, search_popular, show_scholar_fatwas_by_id
+from handlers.fatwa_manage import (
+    add_fatwa_conv, edit_conv, publish_fatwa, delete_fatwa_confirm, delete_fatwa_final, 
+    delete_fatwa_from_all, handle_receive_new_cat, handle_edit_cat_search
 )
-from handlers.fatwa import (
-    add_fatwa_conv, edit_conv, view_fatwa, show_related_fatwas, publish_fatwa,
-    copy_fatwa_full, delete_fatwa_confirm, delete_fatwa_final, delete_fatwa_from_all,
-    broadcast_fatwa, handle_edit_cat_search, handle_receive_new_cat, show_random_fatwa,
-    continue_reading_fatwa
-)
+from handlers.fatwa_broadcast import broadcast_fatwa
 from handlers.favorites import toggle_favorite_handler, my_favorites_handler, top_favorites_handler
 from handlers.admin import (
     admin_panel, manage_admins, list_admins_handler, manage_categories,
