@@ -10,6 +10,7 @@
 
 import logging
 import os
+import asyncio
 from urllib.parse import quote_plus
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
@@ -29,12 +30,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Save User to DB
         if not db.user_exists(user_id):
             db.add_user(user_id, user.username, user.full_name)
-            await notify_new_subscription(
+            # Send notification in background to avoid blocking the start response
+            asyncio.create_task(notify_new_subscription(
                 context.bot, 
                 'user', 
                 {'id': user_id, 'name': user.full_name, 'username': user.username}, 
                 context
-            )
+            ))
         else:
             db.add_user(user_id, user.username, user.full_name)
 
