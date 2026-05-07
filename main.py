@@ -86,6 +86,10 @@ from handlers.channels import (
     start_search_publish_category, clear_publish_category_search, handle_publish_category_search_input,
     start_select_publish_topics, toggle_publish_topic, clear_publish_topics_selection
 )
+from handlers.user_publish import (
+    user_send_fatwa_panel, toggle_user_channel_select, toggle_select_all,
+    user_send_fatwa_execute, user_send_fatwa_cancel, user_send_fatwa_send_valid
+)
 
 # إعداد السجلات (Logging)
 logging.basicConfig(
@@ -329,6 +333,15 @@ def main():
     app.add_handler(CallbackQueryHandler(my_favorites_handler, pattern='^fav_page_'))
     app.add_handler(CallbackQueryHandler(my_favorites_handler, pattern='^fav_sort_'))
     app.add_handler(CallbackQueryHandler(top_favorites_handler, pattern='^top_favorites$'))
+
+    # 8. معالجات إرسال الفتوى للمستخدم
+    app.add_handler(CallbackQueryHandler(user_send_fatwa_panel, pattern='^user_send_fatwa$'))
+    app.add_handler(CallbackQueryHandler(user_send_fatwa_panel, pattern='^user_sf_page_'))
+    app.add_handler(CallbackQueryHandler(toggle_user_channel_select, pattern='^user_sf_toggle_'))
+    app.add_handler(CallbackQueryHandler(toggle_select_all, pattern='^user_sf_selall$'))
+    app.add_handler(CallbackQueryHandler(user_send_fatwa_execute, pattern='^user_sf_send$'))
+    app.add_handler(CallbackQueryHandler(user_send_fatwa_send_valid, pattern='^user_sf_send_valid$'))
+    app.add_handler(CallbackQueryHandler(user_send_fatwa_cancel, pattern='^user_sf_cancel$'))
 
     # 8. الجدولة (JobQueue) - 12:00 PM Daily
     if app.job_queue:

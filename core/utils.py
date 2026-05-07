@@ -601,7 +601,7 @@ def create_main_keyboard(is_admin=False):
         [InlineKeyboardButton("🔍 بحث عن فتوى", callback_data="search_fatwas"), InlineKeyboardButton("📖 مطالعة الفتاوى", callback_data="browse_fatwas")],
         [InlineKeyboardButton("🔥 الأكثر مشاهدة", callback_data="search_popular"), InlineKeyboardButton("📅 أحدث الفتاوى", callback_data="search_latest")],
         [InlineKeyboardButton("⭐ مفضلتك", callback_data="my_favorites"), InlineKeyboardButton("🌟 المفضلة", callback_data="top_favorites")],
-        [InlineKeyboardButton("➕ أضفه إلى قناتك أو مجموعتك", callback_data="how_to_add_bot")],
+        [InlineKeyboardButton("➕ أضفه إلى قناتك أو مجموعتك", callback_data="how_to_add_bot"), InlineKeyboardButton("📨 ارسل فتوى لقناتك", callback_data="user_send_fatwa")],
         [InlineKeyboardButton("📊 الإحصائيات", callback_data="stats"), InlineKeyboardButton("ℹ️ حول البوت", callback_data="help_info")],
     ]
 
