@@ -44,20 +44,20 @@ USER_SF_CHANNELS_TTL = 120  # seconds before re-fetching user channels
 # ==================== Helpers ====================
 
 
-def _get_publish_settings() -> Tuple[Optional[int], List[int]]:
+async def _get_publish_settings() -> Tuple[Optional[int], List[int]]:
     """قراءة إعدادات النشر المحدد من الإعدادات العامة للبوت."""
-    raw_cat = (bot_db.get_setting("auto_publish_category_id", "") or "").strip()
+    raw_cat = (await bot_db.get_setting("auto_publish_category_id", "") or "").strip()
     if not raw_cat:
         return None, []
     try:
         cat_id = int(raw_cat)
     except (TypeError, ValueError):
         return None, []
-    category = db.get_category(cat_id)
+    category = await db.get_category(cat_id)
     if not category:
         return None, []
 
-    raw_topics = (bot_db.get_setting("auto_publish_topic_ids", "") or "").strip()
+    raw_topics = (await bot_db.get_setting("auto_publish_topic_ids", "") or "").strip()
     topic_ids: List[int] = []
     if raw_topics:
         for part in raw_topics.split(","):
@@ -118,7 +118,7 @@ async def _get_user_channels(
         return cached
 
     # جلب جميع القنوات والمجموعات النشطة من قاعدة بيانات البوت
-    all_channels = bot_db.get_channels(status="active")
+    all_channels = await bot_db.get_channels(status="active")
 
     user_channels: List[Dict] = []
 
@@ -157,8 +157,8 @@ async def user_send_fatwa_panel(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = update.effective_user.id
 
     # تحقق أولاً: هل هناك إعدادات نشر محدد؟
-    cat_id, topic_ids = _get_publish_settings()
-    specific_enabled = bot_db.get_setting("auto_publish_specific", "0") == "1"
+    cat_id, topic_ids = await _get_publish_settings()
+    specific_enabled = await bot_db.get_setting("auto_publish_specific", "0") == "1"
 
     if not cat_id and not specific_enabled:
         await _safe_edit(
@@ -282,7 +282,7 @@ async def user_send_fatwa_panel(update: Update, context: ContextTypes.DEFAULT_TY
     # نص العرض
     cat_name = ""
     if cat_id:
-        cat = db.get_category(cat_id)
+        cat = await db.get_category(cat_id)
         if cat:
             cat_name = cat["name"]
 
@@ -387,7 +387,7 @@ async def user_send_fatwa_execute(update: Update, context: ContextTypes.DEFAULT_
     await query.answer("⏳ جاري التحقق والإرسال...")
 
     # جلب إعدادات النشر المحدد
-    cat_id, topic_ids = _get_publish_settings()
+    cat_id, topic_ids = await _get_publish_settings()
 
     if not cat_id:
         await _safe_edit(
@@ -405,7 +405,7 @@ async def user_send_fatwa_execute(update: Update, context: ContextTypes.DEFAULT_
     valid_channels: List[Dict] = []
     no_permission_channels: List[str] = []
 
-    all_channels = bot_db.get_channels(status="active")
+    all_channels = await bot_db.get_channels(status="active")
     channel_map = {ch["chat_id"]: ch for ch in all_channels}
 
     for chat_id in list(selected):
@@ -461,7 +461,7 @@ async def user_send_fatwa_send_valid(update: Update, context: ContextTypes.DEFAU
         await query.answer("⚠️ لا توجد قنوات صالحة!", show_alert=True)
         return
 
-    cat_id, topic_ids = _get_publish_settings()
+    cat_id, topic_ids = await _get_publish_settings()
     if not cat_id:
         await query.answer("⚠️ لم يتم تحديد تصنيف للنشر!", show_alert=True)
         return
@@ -479,7 +479,7 @@ async def _do_send_fatwa(
     """المنطق الفعلي لجلب الفتوى وإرسالها."""
 
     # جلب فتوى عشوائية من التصنيف/المواضيع المحددة
-    fatwa = db.get_random_published_fatwa(
+    fatwa = await db.get_random_published_fatwa(
         category_id=cat_id,
         topic_ids=topic_ids if topic_ids else None,
     )
@@ -525,7 +525,7 @@ async def _do_send_fatwa(
 
     # تحديث المشاهدات
     if success_count > 0:
-        db.increment_views_by(fatwa["id"], success_count)
+        await db.increment_views_by(fatwa["id"], success_count)
 
     # تقرير الإرسال
     fatwa_num = fatwa.get("fatwa_number", fatwa["id"])
@@ -584,7 +584,7 @@ async def user_send_fatwa_cancel(update: Update, context: ContextTypes.DEFAULT_T
     from core.utils import create_main_keyboard
 
     user_id = update.effective_user.id
-    is_admin = bot_db.is_admin(user_id)
+    is_admin = await bot_db.is_admin(user_id)
 
     await _safe_edit(
         query,

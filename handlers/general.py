@@ -13,7 +13,7 @@ import os
 import asyncio
 from urllib.parse import quote_plus
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
-from telegram.ext import ContextTypes, ConversationHandler
+from telegram.ext import ContextTypes, ConversationHandler, ApplicationHandlerStop
 from core.config import TELEGRAM_TOKEN, OWNER_ID
 from core.bot_db import BotDatabaseManager
 from core.utils import rate_limiter, monitor, create_main_keyboard, back_to_main_keyboard, notify_new_subscription
@@ -27,9 +27,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
         user_id = user.id
 
-        # Save User to DB
-        if not db.user_exists(user_id):
-            db.add_user(user_id, user.username, user.full_name)
+        # Save User to DB (Async)
+        if not await db.user_exists(user_id):
+            await db.add_user(user_id, user.username, user.full_name)
             # Send notification in background to avoid blocking the start response
             asyncio.create_task(notify_new_subscription(
                 context.bot, 
@@ -38,7 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 context
             ))
         else:
-            db.add_user(user_id, user.username, user.full_name)
+            await db.add_user(user_id, user.username, user.full_name)
 
         # Deep Linking for Fatwa (by number or id)
         if context.args and context.args[0].startswith('fatwa_'):
@@ -49,9 +49,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 fatwa_number = int(fatwa_token)
                 from core.database import FatwaDatabaseManager
                 fatwa_db = FatwaDatabaseManager()
-                fatwa = fatwa_db.get_fatwa_by_number(fatwa_number)
+                fatwa = await fatwa_db.get_fatwa_by_number(fatwa_number)
                 if not fatwa:
-                    fatwa = fatwa_db.get_fatwa(fatwa_number)
+                    fatwa = await fatwa_db.get_fatwa(fatwa_number)
                 if not fatwa:
                     raise ValueError("Fatwa not found")
                 from handlers.fatwa_view import send_fatwa_message
@@ -60,7 +60,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception as e:
                 logger.error(f"Deep link error: {e}")
                 # Fallback to normal start if error
-
 
         # Rate limiting
         if not rate_limiter.is_allowed(user_id):
@@ -73,11 +72,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # تسجيل في المراقبة
         monitor.log_command('start', user_id)
 
-        # التحقق من الصلاحيات
-        is_admin = db.is_admin(user_id)
+        # التحقق من الصلاحيات (Async)
+        is_admin = await db.is_admin(user_id)
 
         welcome_text = (
-            "👋 مرحباً بك ابو الحارث في بوت ادارة الفتاوى\n\n"
+            f"👋 مرحباً بك {user.first_name if user.first_name else ''} في بوت ادارة الفتاوى\n\n"
             "🔎 بوابتك الموثوقة للعلم الشرعي\n"
             "نسعى لتقريب العلم وتسهيل الوصول إلى فتاوى كبار العلماء بأسلوب ميسر ومنظم.\n\n"
             "📚 ماذا يمكنك أن تفعل؟\n"
@@ -93,19 +92,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_keyboard = [["🤖 بوتاتنا", "🏠 القائمة الرئيسية"]]
         markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
 
-        # نرسل رسالة ترحيب مع القائمة السفلية
-        # ملاحظة: InlineKeyboard و ReplyKeyboard لا يمكن إرسالهما في نفس "الحقل" (reply_markup) لرسالة واحدة.
-        # الحل: نرسل رسالة ترحيبية مع ReplyMarkup، ثم رسالة القائمة مع InlineMarkup.
-        # أو (الأفضل): نرسل الرسالة وفيها Inline، ونرسل رسالة "تم تحديث القائمة" مخفية أو نرسل الـ Reply مع نفس الرسالة؟
-        # لا، reply_markup يأخذ واحداً فقط.
-        # سنرسل الـ ReplyKeyboard مع رسالة ترحيب قصيرة أو نفس الرسالة، لكن القائمة الرئيسية (Inlines) تحتاج رسالة.
-        # لذا: نرسل Welcome مع Inline، ونرسل رسالة منفصلة صغيرة لتفعيل ReplyKeyboard؟
-        # الخيار الأجمل: Welcome Text يأتي مع Inline، ونضمن أن الـ Reply موجود سابقاً او نرسله برسالة وهمية ثم نحذفها؟ لا.
-        # Telegram API: Message accepts reply_markup. It can be Inline OR Reply, not both.
-        # سنرسل رسالة صغيرة قبلها لتثبيت القائمة، أو بعدها.
-        # سنجعل Welcome Text يحمل الـ Inline.
-        # ونرسل رسالة "القائمة السريعة 👇" تحمل الـ ReplyKeyboard.
-
         await update.message.reply_text("👇 القائمة السريعة:", reply_markup=markup)
 
         await update.message.reply_text(
@@ -117,6 +103,80 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in start: {e}")
         await error_handler(update, context)
+
+async def start_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """تحديث القائمة الرئيسية (callback)"""
+    query = update.callback_query
+    await query.answer("جاري التحديث...")
+
+    user_id = update.effective_user.id
+    is_admin = await db.is_admin(user_id)
+
+    try:
+        await query.edit_message_text(
+            f"👋 مرحباً بك {update.effective_user.first_name if update.effective_user.first_name else ''} في بوت ادارة الفتاوى\n👇 القائمة الرئيسية:",
+            reply_markup=create_main_keyboard(is_admin)
+        )
+    except Exception as e:
+        # أحياناً التعديل يفشل إذا المحتوى نفسه (Message is not modified)
+        logger.debug(f"start_refresh edit_message_text skipped: {e}")
+
+async def cancel_operation(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إلغاء العملية الحالية"""
+    user_id = update.effective_user.id
+    is_admin = await db.is_admin(user_id)
+
+    if update.callback_query:
+        await update.callback_query.answer("تم الإلغاء")
+        await update.callback_query.edit_message_text(
+            "❌ تم إلغاء العملية.",
+            reply_markup=create_main_keyboard(is_admin)
+        )
+    else:
+        await update.message.reply_text(
+            "❌ تم إلغاء العملية.",
+            reply_markup=create_main_keyboard(is_admin)
+        )
+    return ConversationHandler.END
+
+async def maintenance_mode_guard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """إيقاف تفاعل المستخدمين غير المسؤولين أثناء وضع الصيانة."""
+    if not update:
+        return
+
+    chat = update.effective_chat
+    user = update.effective_user
+    if not chat or not user or chat.type != "private":
+        return
+
+    if await db.is_admin(user.id):
+        return
+    
+    # Check setting from DB (Async)
+    if await db.get_setting("maintenance_mode", "0") != "1":
+        return
+
+    maintenance_text = (
+        "🚧 البوت في وضع الصيانة حاليًا.\n"
+        "يرجى المحاولة لاحقًا."
+    )
+    # Use a fixed developer contact URL or fetch from config
+    developer_url = "https://t.me/abulharith_imad" 
+    maintenance_markup = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📩 راسل المطور", url=developer_url)]
+    ])
+
+    if update.callback_query:
+        try:
+            await update.callback_query.answer("🚧 البوت في وضع الصيانة", show_alert=False)
+        except Exception:
+            pass
+        if update.callback_query.message:
+            await update.callback_query.message.reply_text(maintenance_text, reply_markup=maintenance_markup)
+    elif update.effective_message:
+        await update.effective_message.reply_text(maintenance_text, reply_markup=maintenance_markup)
+
+    raise ApplicationHandlerStop
 
 async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض قائمة بوتاتنا"""
@@ -144,8 +204,6 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "⛔️ **تنبيه:** لا تستخدم البوت فيما يغضب الله عز وجل كتحميل الموسيقى والصور المحرمة!\n\n"
         "🔥 جربه الآن: @TitanSvBot\n\n"
     )
-    # نرسل النص ونحتفظ بالقائمة السفلية (لا نرسل Markup جديد يزيلها إلا إذا أردنا تغييرها)
-    # لا داعي لإرسال markup إذا كنا نريد بقاء القديمة.
     # أزرار مدمجة
     keyboard = [
         [
@@ -160,23 +218,6 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
     else:
         await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-
-async def start_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """تحديث القائمة الرئيسية (callback)"""
-    query = update.callback_query
-    await query.answer("جاري التحديث...")
-
-    user_id = update.effective_user.id
-    is_admin = db.is_admin(user_id)
-
-    try:
-        await query.edit_message_text(
-            "👋 مرحباً بك ابو الحارث في بوت ادارة الفتاوى\n👇 القائمة الرئيسية:",
-            reply_markup=create_main_keyboard(is_admin)
-        )
-    except Exception as e:
-        # أحياناً التعديل يفشل إذا المحتوى نفسه (Message is not modified)
-        logger.debug(f"start_refresh edit_message_text skipped: {e}")
 
 async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المساعدة والمعلومات"""
@@ -324,24 +365,6 @@ async def noop(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """زر وهمي لعناصر فارغة."""
     if update.callback_query:
         await update.callback_query.answer("لا توجد عناصر لعرضها.", show_alert=False)
-
-async def cancel_operation(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إلغاء العملية الحالية"""
-    user_id = update.effective_user.id
-    is_admin = db.is_admin(user_id)
-
-    if update.callback_query:
-        await update.callback_query.answer("تم الإلغاء")
-        await update.callback_query.edit_message_text(
-            "❌ تم إلغاء العملية.",
-            reply_markup=create_main_keyboard(is_admin)
-        )
-    else:
-        await update.message.reply_text(
-            "❌ تم إلغاء العملية.",
-            reply_markup=create_main_keyboard(is_admin)
-        )
-    return ConversationHandler.END
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """معالجة الأخطاء العامة"""

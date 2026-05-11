@@ -17,9 +17,9 @@ async def toggle_favorite_handler(update: Update, context: ContextTypes.DEFAULT_
     fatwa_id = int(query.data.split('_')[-1])
     user_id = update.effective_user.id
 
-    is_added = bot_db.toggle_favorite(user_id, fatwa_id)
+    is_added = await bot_db.toggle_favorite(user_id, fatwa_id)
     try:
-        fatwa_db.increment_favorites_count(fatwa_id, 1 if is_added else -1)
+        await fatwa_db.increment_favorites_count(fatwa_id, 1 if is_added else -1)
     except Exception as e:
         # Keep favorite action stable even if count update fails.
         logger.debug(f"increment_favorites_count failed for fatwa {fatwa_id}: {e}")
@@ -77,13 +77,13 @@ async def my_favorites_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     offset = page * ITEMS_PER_PAGE
     user_id = update.effective_user.id
 
-    favorite_rows = bot_db.get_user_favorites(user_id)
+    favorite_rows = await bot_db.get_user_favorites(user_id)
     favorite_added_at = {
         int(row["fatwa_id"]): (row.get("created_at") or "")
         for row in favorite_rows
     }
     all_fav_ids = [int(row["fatwa_id"]) for row in favorite_rows]
-    all_favorites = fatwa_db.get_fatwas_by_ids(all_fav_ids, public_only=True)
+    all_favorites = await fatwa_db.get_fatwas_by_ids(all_fav_ids, public_only=True)
     if sort_mode == "views":
         def _views_key(f):
             return (
@@ -136,7 +136,7 @@ async def top_favorites_handler(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
 
-    top_favs = fatwa_db.get_top_favorites(5)
+    top_favs = await fatwa_db.get_top_favorites(5)
 
     keyboard = []
 

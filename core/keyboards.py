@@ -1,12 +1,38 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-def create_main_keyboard():
-    """Create the main keyboard (if needed here, though usually this is a ReplyKeyboard)."""
-    # Placeholder if we want to move ReplyKeyboards here too, but mostly we focus on Inline.
-    pass
+def create_main_keyboard(is_admin=False):
+    """إنشاء لوحة المفاتيح الرئيسية"""
+    keyboard = [
+        [InlineKeyboardButton("🔍 بحث عن فتوى", callback_data="search_fatwas"), InlineKeyboardButton("📖 مطالعة الفتاوى", callback_data="browse_fatwas")],
+        [InlineKeyboardButton("🔥 الأكثر مشاهدة", callback_data="search_popular"), InlineKeyboardButton("📅 أحدث الفتاوى", callback_data="search_latest")],
+        [InlineKeyboardButton("⭐ مفضلتك", callback_data="my_favorites"), InlineKeyboardButton("🌟 المفضلة", callback_data="top_favorites")],
+        [InlineKeyboardButton("➕ أضفه إلى قناتك أو مجموعتك", callback_data="how_to_add_bot"), InlineKeyboardButton("📨 ارسل فتوى لقناتك", callback_data="user_send_fatwa")],
+        [InlineKeyboardButton("📊 الإحصائيات", callback_data="stats"), InlineKeyboardButton("ℹ️ حول البوت", callback_data="help_info")],
+    ]
 
-def back_to_main_keyboard():
-    return InlineKeyboardMarkup([[InlineKeyboardButton("\U0001f3e0 القائمة الرئيسية", callback_data="back_main")]])
+    if is_admin:
+        # لوحة الإدارة
+        keyboard.append([InlineKeyboardButton("⚙️ لوحة الإدارة", callback_data="admin_panel")])
+
+    # أزرار معلومات (Removed, merged above)
+    # info_row = [ ... ]
+    # keyboard.append(info_row)
+
+    return InlineKeyboardMarkup(keyboard)
+
+
+# ==========================================
+# 🔙 دوال مساعدة للرجوع (Back Keyboards)
+# ==========================================
+
+def back_to_main_keyboard(label: str = "\U0001f3e0 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629") -> InlineKeyboardMarkup:
+    """
+    لوحة قياسية للرجوع إلى القائمة الرئيسية (back_main)
+
+    لا تغيّر منطق العمل: ما زال callback_data = "back_main"
+    """
+    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data="back_main")]])
+
 
 def back_to_search_keyboard(text="🔙 رجوع للبحث"):
     return InlineKeyboardMarkup([[InlineKeyboardButton(text, callback_data="search_fatwas")]])

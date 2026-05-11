@@ -1,18 +1,6 @@
-"""
-مدير قاعدة بيانات البوت (core/bot_db.py)
----------------------------------------
-يتولى إدارة قاعدة البيانات التشغيلية للبوت، والتي تشمل:
-- بيانات المستخدمين (المشتركين).
-- المسؤولين (الأدمن).
-- القنوات والمجموعات المضافة للنشر التلقائي.
-- الإعدادات العامة للبوت.
-- قائمة المفضلات لكل مستخدم.
-- سجل العمليات والأوامر.
-"""
-
 import logging
-import sqlite3
-import time
+import aiosqlite
+import asyncio
 from typing import Dict, List, Optional
 
 from core.config import BOT_DB_NAME, OWNER_ID
@@ -21,51 +9,51 @@ logger = logging.getLogger(__name__)
 
 
 class BotDatabaseManager:
-    """إدارة البيانات التشغيلية الداخلية للبوت (المستخدمين، الإعدادات، القنوات)."""
+    """إدارة البيانات التشغيلية الداخلية للبوت (المستخدمين، الإعدادات، القنوات) - نسخة Async."""
+
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
 
     def __init__(self, db_name: str = BOT_DB_NAME, max_retries: int = 3, retry_delay: float = 1.0):
-        """
-        تهيئة مدير قاعدة البيانات.
-        
-        Args:
-            db_name: اسم ملف قاعدة البيانات.
-            max_retries: أقصى عدد لمحاولات إعادة التنفيذ عند حدوث قفل (Lock).
-            retry_delay: الوقت الفاصل بين المحاولات بالثواني.
-        """
         self.db_name = db_name
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.init_db()
+        # init_db must be called explicitly as it is async
 
-    def execute_with_retry(self, func, *args, **kwargs):
+    async def execute_with_retry(self, func, *args, **kwargs):
         """
         تنفيذ دالة مع إعادة المحاولة في حال كانت قاعدة البيانات مقفلة (Locked).
         """
         for attempt in range(self.max_retries):
             try:
-                return func(*args, **kwargs)
-            except sqlite3.OperationalError as e:
+                return await func(*args, **kwargs)
+            except aiosqlite.OperationalError as e:
                 if "database is locked" in str(e) and attempt < self.max_retries - 1:
                     logger.warning(f"Database locked, retrying ({attempt + 1}/{self.max_retries})...")
-                    time.sleep(self.retry_delay)
+                    await asyncio.sleep(self.retry_delay)
                     continue
                 raise
             except Exception as e:
                 logger.error(f"Database error: {e}")
                 raise
 
-    def get_connection(self):
+    async def get_connection(self):
         """إنشاء اتصال مع قاعدة البيانات وتفعيل وضع الأداء العالي (WAL)."""
         try:
-            conn = sqlite3.connect(self.db_name, check_same_thread=False, timeout=30.0)
-            conn.row_factory = sqlite3.Row
+            conn = await aiosqlite.connect(self.db_name, timeout=30.0)
+            conn.row_factory = aiosqlite.Row
             try:
                 # إعدادات تحسين الأداء لـ SQLite
-                conn.execute("PRAGMA journal_mode=WAL")
-                conn.execute("PRAGMA synchronous=NORMAL")
-                conn.execute("PRAGMA foreign_keys=ON")
-                conn.execute("PRAGMA temp_store=MEMORY")
-                conn.execute("PRAGMA busy_timeout = 5000")
+                await conn.execute("PRAGMA journal_mode=WAL")
+                await conn.execute("PRAGMA synchronous=NORMAL")
+                await conn.execute("PRAGMA foreign_keys=ON")
+                await conn.execute("PRAGMA temp_store=MEMORY")
+                await conn.execute("PRAGMA busy_timeout = 5000")
             except Exception as e:
                 logger.warning(f"SQLite PRAGMA setup failed: {e}")
             return conn
@@ -73,14 +61,16 @@ class BotDatabaseManager:
             logger.error(f"Error connecting to database: {e}")
             raise
 
-    def init_db(self):
-        def _init():
+    async def init_db(self):
+        if BotDatabaseManager._initialized:
+            return
+            
+        async def _init():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-
-                c.execute(
+                conn = await self.get_connection()
+                
+                await conn.execute(
                     """CREATE TABLE IF NOT EXISTS users (
                         user_id INTEGER PRIMARY KEY,
                         username TEXT,
@@ -92,21 +82,21 @@ class BotDatabaseManager:
                 )
 
                 # Ensure new columns exist for older DBs
-                c.execute("PRAGMA table_info(users)")
-                cols = {row["name"] for row in c.fetchall()}
+                async with conn.execute("PRAGMA table_info(users)") as cursor:
+                    cols = {row["name"] for row in await cursor.fetchall()}
                 if "is_blocked" not in cols:
-                    c.execute("ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0")
+                    await conn.execute("ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0")
                 if "blocked_at" not in cols:
-                    c.execute("ALTER TABLE users ADD COLUMN blocked_at TEXT")
+                    await conn.execute("ALTER TABLE users ADD COLUMN blocked_at TEXT")
 
-                c.execute(
+                await conn.execute(
                     """CREATE TABLE IF NOT EXISTS admins (
                         user_id INTEGER PRIMARY KEY,
                         username TEXT
                     )"""
                 )
 
-                c.execute(
+                await conn.execute(
                     """CREATE TABLE IF NOT EXISTS command_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         user_id INTEGER NOT NULL,
@@ -115,7 +105,7 @@ class BotDatabaseManager:
                     )"""
                 )
 
-                c.execute(
+                await conn.execute(
                     """CREATE TABLE IF NOT EXISTS favorites (
                         user_id INTEGER NOT NULL,
                         fatwa_id INTEGER NOT NULL,
@@ -124,16 +114,16 @@ class BotDatabaseManager:
                     )"""
                 )
 
-                c.execute("PRAGMA table_info(favorites)")
-                favorite_cols = {row["name"] for row in c.fetchall()}
+                async with conn.execute("PRAGMA table_info(favorites)") as cursor:
+                    favorite_cols = {row["name"] for row in await cursor.fetchall()}
                 if "created_at" not in favorite_cols:
-                    c.execute("ALTER TABLE favorites ADD COLUMN created_at TEXT")
-                    c.execute(
+                    await conn.execute("ALTER TABLE favorites ADD COLUMN created_at TEXT")
+                    await conn.execute(
                         "UPDATE favorites SET created_at = CURRENT_TIMESTAMP "
                         "WHERE created_at IS NULL OR created_at = ''"
                     )
 
-                c.execute(
+                await conn.execute(
                     """CREATE TABLE IF NOT EXISTS channels (
                         chat_id INTEGER PRIMARY KEY,
                         title TEXT,
@@ -144,7 +134,7 @@ class BotDatabaseManager:
                     )"""
                 )
 
-                c.execute(
+                await conn.execute(
                     """CREATE TABLE IF NOT EXISTS settings (
                         key TEXT PRIMARY KEY,
                         value TEXT
@@ -152,62 +142,62 @@ class BotDatabaseManager:
                 )
 
                 # Indexes
-                c.execute("CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_favorites_fatwa_id ON favorites(fatwa_id)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_channels_status ON channels(status)")
-                c.execute("CREATE INDEX IF NOT EXISTS idx_channels_type ON channels(type)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_favorites_user_id ON favorites(user_id)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_favorites_fatwa_id ON favorites(fatwa_id)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_channels_status ON channels(status)")
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_channels_type ON channels(type)")
 
                 # Defaults
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish', '0')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_specific', '0')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_category_id', '')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_topic_ids', '')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('daily_publish_time', '12:00')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_scheduled_fatwa_number', '')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('weekly_report_weekday', '4')")  # Friday
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('weekly_report_time', '08:00')")
-                c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('maintenance_mode', '0')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish', '0')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_specific', '0')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_category_id', '')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_topic_ids', '')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('daily_publish_time', '12:00')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_publish_scheduled_fatwa_number', '')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('weekly_report_weekday', '4')")  # Friday
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('weekly_report_time', '08:00')")
+                await conn.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('maintenance_mode', '0')")
 
                 # Migrate old defaults (Mon 12:00) to requested schedule (Fri 08:00)
                 try:
-                    c.execute("SELECT value FROM settings WHERE key = 'weekly_report_weekday'")
-                    row = c.fetchone()
-                    if not row or row["value"] in (None, "", "0"):
-                        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('weekly_report_weekday', '4')")
+                    async with conn.execute("SELECT value FROM settings WHERE key = 'weekly_report_weekday'") as cursor:
+                        row = await cursor.fetchone()
+                        if not row or row["value"] in (None, "", "0"):
+                            await conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('weekly_report_weekday', '4')")
 
-                    c.execute("SELECT value FROM settings WHERE key = 'weekly_report_time'")
-                    row = c.fetchone()
-                    if not row or row["value"] in (None, "", "12:00"):
-                        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('weekly_report_time', '08:00')")
+                    async with conn.execute("SELECT value FROM settings WHERE key = 'weekly_report_time'") as cursor:
+                        row = await cursor.fetchone()
+                        if not row or row["value"] in (None, "", "12:00"):
+                            await conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('weekly_report_time', '08:00')")
 
-                    c.execute("SELECT value FROM settings WHERE key = 'daily_publish_time'")
-                    row = c.fetchone()
-                    if not row or row["value"] in (None, "", "12:00"):
-                        c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('daily_publish_time', '12:00')")
+                    async with conn.execute("SELECT value FROM settings WHERE key = 'daily_publish_time'") as cursor:
+                        row = await cursor.fetchone()
+                        if not row or row["value"] in (None, "", "12:00"):
+                            await conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('daily_publish_time', '12:00')")
                 except Exception as e:
                     logger.warning(f"Failed to migrate weekly report schedule: {e}")
 
                 # Ensure owner is admin
                 if OWNER_ID:
-                    c.execute(
+                    await conn.execute(
                         "INSERT OR IGNORE INTO admins (user_id, username) VALUES (?, ?)",
                         (OWNER_ID, None),
                     )
 
-                conn.commit()
+                await conn.commit()
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        self.execute_with_retry(_init)
+        await self.execute_with_retry(_init)
+        BotDatabaseManager._initialized = True
 
     # Users
-    def add_user(self, user_id: int, username: str = None, full_name: str = None):
-        def _add():
+    async def add_user(self, user_id: int, username: str = None, full_name: str = None):
+        async def _add():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 sql = """
                     INSERT INTO users (user_id, username, full_name, joined_at, is_blocked, blocked_at)
                     VALUES (?, ?, ?, CURRENT_TIMESTAMP, 0, NULL)
@@ -217,39 +207,37 @@ class BotDatabaseManager:
                     is_blocked=0,
                     blocked_at=NULL
                 """
-                c.execute(sql, (user_id, username, full_name))
-                conn.commit()
+                await conn.execute(sql, (user_id, username, full_name))
+                await conn.commit()
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_add)
+        return await self.execute_with_retry(_add)
 
-    def user_exists(self, user_id: int) -> bool:
-        def _check():
+    async def user_exists(self, user_id: int) -> bool:
+        async def _check():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
-                return c.fetchone() is not None
+                conn = await self.get_connection()
+                async with conn.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,)) as cursor:
+                    return await cursor.fetchone() is not None
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_check)
+        return await self.execute_with_retry(_check)
 
-    def get_user_by_username(self, username: str) -> Optional[Dict]:
+    async def get_user_by_username(self, username: str) -> Optional[Dict]:
         normalized = (username or "").strip().lstrip("@")
         if not normalized:
             return None
 
-        def _get():
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute(
+                conn = await self.get_connection()
+                async with conn.execute(
                     """
                     SELECT user_id, username, full_name
                     FROM users
@@ -259,38 +247,36 @@ class BotDatabaseManager:
                     LIMIT 1
                     """,
                     (normalized,),
-                )
-                row = c.fetchone()
-                return dict(row) if row else None
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    return dict(row) if row else None
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def get_all_bot_users(self) -> List[int]:
-        def _get():
+    async def get_all_bot_users(self) -> List[int]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute(
+                conn = await self.get_connection()
+                async with conn.execute(
                     "SELECT user_id FROM users WHERE user_id > 0 "
                     "AND user_id NOT IN (SELECT chat_id FROM channels)"
-                )
-                return [row[0] for row in c.fetchall()]
+                ) as cursor:
+                    return [row[0] for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def get_active_users(self, limit: int = None, offset: int = 0) -> List[Dict]:
-        def _get():
+    async def get_active_users(self, limit: int = None, offset: int = 0) -> List[Dict]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 sql = """
                     SELECT user_id, username, full_name
                     FROM users
@@ -302,37 +288,36 @@ class BotDatabaseManager:
                 if limit is not None:
                     sql += " LIMIT ? OFFSET ?"
                     params.extend([limit, offset])
-                c.execute(sql, params)
-                return [dict(row) for row in c.fetchall()]
+                async with conn.execute(sql, params) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def get_active_users_count(self) -> int:
-        def _count():
+    async def get_active_users_count(self) -> int:
+        async def _count():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute(
+                conn = await self.get_connection()
+                async with conn.execute(
                     "SELECT COUNT(*) FROM users WHERE COALESCE(is_blocked, 0) = 0 AND user_id > 0 "
                     "AND user_id NOT IN (SELECT chat_id FROM channels)"
-                )
-                return c.fetchone()[0]
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    return row[0]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_count)
+        return await self.execute_with_retry(_count)
 
-    def get_inactive_users(self, limit: int = None, offset: int = 0) -> List[Dict]:
-        def _get():
+    async def get_inactive_users(self, limit: int = None, offset: int = 0) -> List[Dict]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 sql = """
                     SELECT user_id, username, full_name, blocked_at
                     FROM users
@@ -344,179 +329,170 @@ class BotDatabaseManager:
                 if limit is not None:
                     sql += " LIMIT ? OFFSET ?"
                     params.extend([limit, offset])
-                c.execute(sql, params)
-                return [dict(row) for row in c.fetchall()]
+                async with conn.execute(sql, params) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def get_inactive_users_count(self) -> int:
-        def _count():
+    async def get_inactive_users_count(self) -> int:
+        async def _count():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute(
+                conn = await self.get_connection()
+                async with conn.execute(
                     "SELECT COUNT(*) FROM users WHERE COALESCE(is_blocked, 0) = 1 AND user_id > 0 "
                     "AND user_id NOT IN (SELECT chat_id FROM channels)"
-                )
-                return c.fetchone()[0]
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    return row[0]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_count)
+        return await self.execute_with_retry(_count)
 
-    def get_active_user_ids(self) -> List[int]:
-        def _get():
+    async def get_active_user_ids(self) -> List[int]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute(
+                conn = await self.get_connection()
+                async with conn.execute(
                     "SELECT user_id FROM users WHERE COALESCE(is_blocked, 0) = 0 AND user_id > 0 "
                     "AND user_id NOT IN (SELECT chat_id FROM channels)"
-                )
-                return [row[0] for row in c.fetchall()]
+                ) as cursor:
+                    return [row[0] for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def set_user_blocked(self, user_id: int, blocked: bool = True) -> bool:
-        def _set():
+    async def set_user_blocked(self, user_id: int, blocked: bool = True) -> bool:
+        async def _set():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 if blocked:
-                    c.execute(
+                    await conn.execute(
                         "UPDATE users SET is_blocked = 1, blocked_at = CURRENT_TIMESTAMP WHERE user_id = ?",
                         (user_id,)
                     )
                 else:
-                    c.execute(
+                    await conn.execute(
                         "UPDATE users SET is_blocked = 0, blocked_at = NULL WHERE user_id = ?",
                         (user_id,)
                     )
-                conn.commit()
+                await conn.commit()
                 return True
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_set)
+        return await self.execute_with_retry(_set)
 
-    def remove_user(self, user_id: int) -> bool:
-        def _remove():
+    async def remove_user(self, user_id: int) -> bool:
+        async def _remove():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
-                conn.commit()
+                conn = await self.get_connection()
+                await conn.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
+                await conn.commit()
                 return True
             except Exception as e:
                 logger.error(f"Error removing user: {e}")
                 return False
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_remove)
+        return await self.execute_with_retry(_remove)
 
     # Admins
-    def is_admin(self, user_id: int) -> bool:
-        def _check():
+    async def is_admin(self, user_id: int) -> bool:
+        async def _check():
             if user_id == OWNER_ID:
                 return True
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,))
-                return c.fetchone() is not None
+                conn = await self.get_connection()
+                async with conn.execute("SELECT 1 FROM admins WHERE user_id = ?", (user_id,)) as cursor:
+                    return await cursor.fetchone() is not None
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_check)
+        return await self.execute_with_retry(_check)
 
-    def get_admins(self) -> List[Dict]:
-        def _get():
+    async def get_admins(self) -> List[Dict]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("SELECT user_id, username FROM admins")
-                return [dict(r) for r in c.fetchall()]
+                conn = await self.get_connection()
+                async with conn.execute("SELECT user_id, username FROM admins") as cursor:
+                    return [dict(r) for r in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def add_admin(self, user_id: int, username: str = None) -> bool:
-        def _add():
+    async def add_admin(self, user_id: int, username: str = None) -> bool:
+        async def _add():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("INSERT INTO admins (user_id, username) VALUES (?, ?)", (user_id, username))
-                conn.commit()
+                conn = await self.get_connection()
+                await conn.execute("INSERT INTO admins (user_id, username) VALUES (?, ?)", (user_id, username))
+                await conn.commit()
                 return True
-            except sqlite3.IntegrityError:
+            except aiosqlite.IntegrityError:
                 return False
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_add)
+        return await self.execute_with_retry(_add)
 
     # Settings
-    def get_setting(self, key: str, default: str = None) -> str:
-        def _get():
+    async def get_setting(self, key: str, default: str = None) -> str:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("SELECT value FROM settings WHERE key = ?", (key,))
-                row = c.fetchone()
-                return row["value"] if row else default
+                conn = await self.get_connection()
+                async with conn.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cursor:
+                    row = await cursor.fetchone()
+                    return row["value"] if row else default
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def set_setting(self, key: str, value: str) -> bool:
-        def _set():
+    async def set_setting(self, key: str, value: str) -> bool:
+        async def _set():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
-                conn.commit()
+                conn = await self.get_connection()
+                await conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
+                await conn.commit()
                 return True
             except Exception as e:
                 logger.error(f"Error setting value: {e}")
                 return False
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_set)
+        return await self.execute_with_retry(_set)
 
     # Channels
-    def add_channel(self, chat_id: int, title: str, username: str, chat_type: str, status: str = "active") -> bool:
-        def _add():
+    async def add_channel(self, chat_id: int, title: str, username: str, chat_type: str, status: str = "active") -> bool:
+        async def _add():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 sql = """
                     INSERT INTO channels (chat_id, title, username, type, status, added_at)
                     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -527,74 +503,70 @@ class BotDatabaseManager:
                     status=excluded.status,
                     added_at=CURRENT_TIMESTAMP
                 """
-                c.execute(sql, (chat_id, title, username, chat_type, status))
-                conn.commit()
+                await conn.execute(sql, (chat_id, title, username, chat_type, status))
+                await conn.commit()
                 return True
             except Exception as e:
                 logger.error(f"Error adding channel: {e}")
                 return False
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_add)
+        return await self.execute_with_retry(_add)
 
-    def channel_exists(self, chat_id: int) -> bool:
-        def _check():
+    async def channel_exists(self, chat_id: int) -> bool:
+        async def _check():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("SELECT 1 FROM channels WHERE chat_id = ?", (chat_id,))
-                return c.fetchone() is not None
+                conn = await self.get_connection()
+                async with conn.execute("SELECT 1 FROM channels WHERE chat_id = ?", (chat_id,)) as cursor:
+                    return await cursor.fetchone() is not None
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_check)
+        return await self.execute_with_retry(_check)
 
-    def update_channel_status(self, chat_id: int, status: str) -> bool:
-        def _update():
+    async def update_channel_status(self, chat_id: int, status: str) -> bool:
+        async def _update():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("UPDATE channels SET status = ? WHERE chat_id = ?", (status, chat_id))
-                conn.commit()
+                conn = await self.get_connection()
+                await conn.execute("UPDATE channels SET status = ? WHERE chat_id = ?", (status, chat_id))
+                await conn.commit()
                 return True
             except Exception as e:
                 logger.error(f"Error updating channel status: {e}")
                 return False
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_update)
+        return await self.execute_with_retry(_update)
 
-    def remove_channel(self, chat_id: int) -> bool:
-        def _remove():
+    async def remove_channel(self, chat_id: int) -> bool:
+        async def _remove():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("DELETE FROM channels WHERE chat_id = ?", (chat_id,))
-                conn.commit()
+                conn = await self.get_connection()
+                await conn.execute("DELETE FROM channels WHERE chat_id = ?", (chat_id,))
+                await conn.commit()
                 return True
             except Exception as e:
                 logger.error(f"Error removing channel: {e}")
                 return False
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_remove)
+        return await self.execute_with_retry(_remove)
 
-    def get_channels(self, status: str = None, chat_type: str = None) -> List[Dict]:
-        def _get():
+    async def get_channels(self, status: str = None, chat_type: str = None) -> List[Dict]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 sql = "SELECT * FROM channels WHERE 1=1"
                 params = []
                 if status:
@@ -606,54 +578,51 @@ class BotDatabaseManager:
                     else:
                         sql += " AND type = ?"
                         params.append(chat_type)
-                c.execute(sql, params)
-                return [dict(row) for row in c.fetchall()]
+                async with conn.execute(sql, params) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
     # Favorites
-    def toggle_favorite(self, user_id: int, fatwa_id: int) -> bool:
-        def _toggle():
-            conn = self.get_connection()
+    async def toggle_favorite(self, user_id: int, fatwa_id: int) -> bool:
+        async def _toggle():
+            conn = await self.get_connection()
             try:
-                c = conn.cursor()
-                c.execute("SELECT 1 FROM favorites WHERE user_id = ? AND fatwa_id = ?", (user_id, fatwa_id))
-                exists = c.fetchone()
-                if exists:
-                    c.execute("DELETE FROM favorites WHERE user_id = ? AND fatwa_id = ?", (user_id, fatwa_id))
-                    conn.commit()
-                    return False
-                c.execute("INSERT INTO favorites (user_id, fatwa_id) VALUES (?, ?)", (user_id, fatwa_id))
-                conn.commit()
-                return True
+                async with conn.execute("SELECT 1 FROM favorites WHERE user_id = ? AND fatwa_id = ?", (user_id, fatwa_id)) as cursor:
+                    exists = await cursor.fetchone()
+                    if exists:
+                        await conn.execute("DELETE FROM favorites WHERE user_id = ? AND fatwa_id = ?", (user_id, fatwa_id))
+                        await conn.commit()
+                        return False
+                    await conn.execute("INSERT INTO favorites (user_id, fatwa_id) VALUES (?, ?)", (user_id, fatwa_id))
+                    await conn.commit()
+                    return True
             finally:
-                conn.close()
+                await conn.close()
 
-        return self.execute_with_retry(_toggle)
+        return await self.execute_with_retry(_toggle)
 
-    def is_favorite(self, user_id: int, fatwa_id: int) -> bool:
-        def _check():
-            conn = self.get_connection()
+    async def is_favorite(self, user_id: int, fatwa_id: int) -> bool:
+        async def _check():
+            conn = await self.get_connection()
             try:
-                c = conn.cursor()
-                c.execute("SELECT 1 FROM favorites WHERE user_id = ? AND fatwa_id = ?", (user_id, fatwa_id))
-                return c.fetchone() is not None
+                async with conn.execute("SELECT 1 FROM favorites WHERE user_id = ? AND fatwa_id = ?", (user_id, fatwa_id)) as cursor:
+                    return await cursor.fetchone() is not None
             finally:
-                conn.close()
+                await conn.close()
 
-        return self.execute_with_retry(_check)
+        return await self.execute_with_retry(_check)
 
-    def get_user_favorites(self, user_id: int, limit: int = None, offset: int = 0) -> List[Dict]:
-        def _get():
+    async def get_user_favorites(self, user_id: int, limit: int = None, offset: int = 0) -> List[Dict]:
+        async def _get():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("PRAGMA table_info(favorites)")
-                favorite_cols = {row["name"] for row in c.fetchall()}
+                conn = await self.get_connection()
+                async with conn.execute("PRAGMA table_info(favorites)") as cursor:
+                    favorite_cols = {row["name"] for row in await cursor.fetchall()}
                 has_created_at = "created_at" in favorite_cols
                 select_columns = "fatwa_id, created_at" if has_created_at else "fatwa_id, '' AS created_at"
                 order_clause = "ORDER BY datetime(created_at) DESC, rowid DESC" if has_created_at else "ORDER BY rowid DESC"
@@ -667,38 +636,36 @@ class BotDatabaseManager:
                 if limit is not None:
                     sql += " LIMIT ? OFFSET ?"
                     params.extend([limit, offset])
-                c.execute(sql, params)
-                return [dict(row) for row in c.fetchall()]
+                async with conn.execute(sql, params) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get)
+        return await self.execute_with_retry(_get)
 
-    def get_user_favorite_ids(self, user_id: int, limit: int = None, offset: int = 0) -> List[int]:
-        favorites = self.get_user_favorites(user_id, limit=limit, offset=offset)
+    async def get_user_favorite_ids(self, user_id: int, limit: int = None, offset: int = 0) -> List[int]:
+        favorites = await self.get_user_favorites(user_id, limit=limit, offset=offset)
         return [int(row["fatwa_id"]) for row in favorites]
 
-    def remove_favorites_for_fatwa(self, fatwa_id: int) -> None:
-        def _remove():
+    async def remove_favorites_for_fatwa(self, fatwa_id: int) -> None:
+        async def _remove():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
-                c.execute("DELETE FROM favorites WHERE fatwa_id = ?", (fatwa_id,))
-                conn.commit()
+                conn = await self.get_connection()
+                await conn.execute("DELETE FROM favorites WHERE fatwa_id = ?", (fatwa_id,))
+                await conn.commit()
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        self.execute_with_retry(_remove)
+        await self.execute_with_retry(_remove)
 
-    def get_top_favorites(self, limit: int = 5) -> List[Dict]:
-        def _get_top():
+    async def get_top_favorites(self, limit: int = 5) -> List[Dict]:
+        async def _get_top():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 sql = """
                     SELECT fatwa_id, COUNT(*) as fav_count
                     FROM favorites
@@ -706,36 +673,38 @@ class BotDatabaseManager:
                     ORDER BY fav_count DESC
                     LIMIT ?
                 """
-                c.execute(sql, (limit,))
-                return [dict(row) for row in c.fetchall()]
+                async with conn.execute(sql, (limit,)) as cursor:
+                    return [dict(row) for row in await cursor.fetchall()]
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_get_top)
+        return await self.execute_with_retry(_get_top)
 
     # Stats
-    def get_statistics(self) -> Dict:
-        def _stats():
+    async def get_statistics(self) -> Dict:
+        async def _stats():
             conn = None
             try:
-                conn = self.get_connection()
-                c = conn.cursor()
+                conn = await self.get_connection()
                 stats = {}
                 # Count channels/groups where the bot is still registered in DB
                 # (includes active + inactive بسبب نقص الصلاحيات).
-                c.execute("SELECT COUNT(*) FROM channels WHERE type='channel'")
-                stats["channels"] = c.fetchone()[0]
-                c.execute("SELECT COUNT(*) FROM channels WHERE (type='group' OR type='supergroup')")
-                stats["groups"] = c.fetchone()[0]
-                c.execute(
+                async with conn.execute("SELECT COUNT(*) FROM channels WHERE type='channel'") as cursor:
+                    row = await cursor.fetchone()
+                    stats["channels"] = row[0]
+                async with conn.execute("SELECT COUNT(*) FROM channels WHERE (type='group' OR type='supergroup')") as cursor:
+                    row = await cursor.fetchone()
+                    stats["groups"] = row[0]
+                async with conn.execute(
                     "SELECT COUNT(*) FROM users WHERE user_id > 0 AND COALESCE(is_blocked, 0) = 0 "
                     "AND user_id NOT IN (SELECT chat_id FROM channels)"
-                )
-                stats["subscribers"] = c.fetchone()[0]
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    stats["subscribers"] = row[0]
                 return stats
             finally:
                 if conn:
-                    conn.close()
+                    await conn.close()
 
-        return self.execute_with_retry(_stats)
+        return await self.execute_with_retry(_stats)

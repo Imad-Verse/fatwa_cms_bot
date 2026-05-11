@@ -8,6 +8,8 @@
 """
 
 import os
+import re
+import unicodedata
 import sys
 import socket
 import asyncio
@@ -16,6 +18,7 @@ import threading
 import logging
 from collections import defaultdict
 from datetime import datetime
+from functools import wraps
 from telegram.error import NetworkError, TimedOut, TelegramError, BadRequest
 from telegram import InlineKeyboardMarkup
 
@@ -142,7 +145,42 @@ class CallbackGuard:
 cache = CacheManager()
 monitor = BotMonitor()
 rate_limiter = RateLimiter(max_requests=15, period=60)
-callback_guard = CallbackGuard(min_interval=1.5)
+_global_callback_guard_manager = CallbackGuard(min_interval=1.5)
+
+def callback_guard(min_interval: float = 1.5):
+    """
+    ديكوريتور لمنع الضغط المتكرر السريع على نفس الزر.
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(update, context, *args, **kwargs):
+            query = update.callback_query
+            if not query:
+                return await func(update, context, *args, **kwargs)
+            
+            user_id = update.effective_user.id
+            data = query.data or ""
+            
+            # استخدام الحارس العالمي
+            # نقوم بتعديل الـ interval مؤقتاً إذا مرر المستخدم قيمة مختلفة
+            original_interval = _global_callback_guard_manager.min_interval
+            _global_callback_guard_manager.min_interval = min_interval
+            
+            is_fast = _global_callback_guard_manager.is_fast_repeat(user_id, data)
+            
+            # إعادة الـ interval للقيمة الافتراضية
+            _global_callback_guard_manager.min_interval = original_interval
+            
+            if is_fast:
+                try:
+                    await query.answer("⏳ يرجى الانتظار قليلاً...", show_alert=False)
+                except Exception:
+                    pass
+                return
+            
+            return await func(update, context, *args, **kwargs)
+        return wrapper
+    return decorator
 
 # ==========================================
 # 🔒 نظام القفل (Singleton Lock - Socket Strategy)
@@ -190,7 +228,7 @@ def sanitize_input(text: str, max_length: int = 4000) -> str:
     if not text:
         return ""
     # إزالة الأكواد الخبيثة المحتملة (بسيط)
-    text = text.replace('<script>', '').replace('</script>', '')
+    text = re.sub(r"<[^>]*>", "", text)
     return text[:max_length].strip()
 
 def escape_markdown(text: str) -> str:
@@ -226,8 +264,6 @@ def remove_tashkeel(text: str) -> str:
     if not text:
         return ""
 
-    import re
-    import unicodedata
 
     text = str(text)
 
@@ -273,30 +309,7 @@ def normalize_text(text: str) -> str:
     return remove_tashkeel(text)
 
 
-def is_valid_url(text: str) -> bool:
-    """Check if the text is a valid URL."""
-    import re
-    # Simplified regex for practical use
-    regex = re.compile(
-        r'^(?:http|ftp)s?://' # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' # domain...
-        r'localhost|' # localhost...
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
-        r'(?::\d+)?' # optional port
-        r'(?:/?|[/?]\S+)$', re.IGNORECASE)
-    return re.match(regex, text) is not None
-
-def contains_url(text: str) -> bool:
-    """Check if the text contains any URL."""
-    import re
-    regex = re.compile(
-        r'(?:http|ftp)s?://' # http:// or https://
-        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+(?:[A-Z]{2,6}\.?|[A-Z0-9-]{2,}\.?)|' # domain...
-        r'localhost|' # localhost...
-        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})' # ...or ip
-        r'(?::\d+)?' # optional port
-        r'(?:/?|[/?]\S+)', re.IGNORECASE)
-    return re.search(regex, text) is not None
+from core.validators import is_valid_url, contains_url
 
 
 def split_long_message(text: str, max_length: int = 4000) -> list:
@@ -304,7 +317,6 @@ def split_long_message(text: str, max_length: int = 4000) -> list:
     if len(text) <= max_length:
         return [text]
 
-    import re
 
     def _hard_split(chunk: str) -> list:
         return [chunk[i:i + max_length] for i in range(0, len(chunk), max_length)]
@@ -400,7 +412,6 @@ def format_fatwa_card(fatwa: dict, use_markdown: bool = False) -> str:
             return value or ""
         return escape_markdown(value or "")
 
-    # تنسيق التصنيفات (قائمة مُسطَّحة بدون عناوين فقهية/موضوعية)
     # تنسيق التصنيفات (قائمة مُسطَّحة بدون عناوين فقهية/موضوعية)
     items = []
     classifications = fatwa.get('classifications', [])
@@ -531,7 +542,6 @@ def build_fatwa_preview_text(fatwa: dict, max_length: int = 3600) -> tuple[str, 
         footer_lines.append(source_line)
 
     # Categories / topics lines
-    # Categories / topics lines
     classifications = fatwa.get('classifications', [])
     if classifications:
         for cls in sorted(classifications, key=lambda x: x.get('slot_index', 0)):
@@ -595,45 +605,7 @@ def format_full_fatwa_for_copy(fatwa: dict) -> str:
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-def create_main_keyboard(is_admin=False):
-    """إنشاء لوحة المفاتيح الرئيسية"""
-    keyboard = [
-        [InlineKeyboardButton("🔍 بحث عن فتوى", callback_data="search_fatwas"), InlineKeyboardButton("📖 مطالعة الفتاوى", callback_data="browse_fatwas")],
-        [InlineKeyboardButton("🔥 الأكثر مشاهدة", callback_data="search_popular"), InlineKeyboardButton("📅 أحدث الفتاوى", callback_data="search_latest")],
-        [InlineKeyboardButton("⭐ مفضلتك", callback_data="my_favorites"), InlineKeyboardButton("🌟 المفضلة", callback_data="top_favorites")],
-        [InlineKeyboardButton("➕ أضفه إلى قناتك أو مجموعتك", callback_data="how_to_add_bot"), InlineKeyboardButton("📨 ارسل فتوى لقناتك", callback_data="user_send_fatwa")],
-        [InlineKeyboardButton("📊 الإحصائيات", callback_data="stats"), InlineKeyboardButton("ℹ️ حول البوت", callback_data="help_info")],
-    ]
-
-    if is_admin:
-        # إضافة زر إضافة فتوى بجانب البحث للأدمن -> REMOVED per request
-        # keyboard[0].append(InlineKeyboardButton("➕ إضافة فتوى", callback_data="add_fatwa"))
-        pass
-
-
-    if is_admin:
-        # فقط زر لوحة الإدارة
-        keyboard.append([InlineKeyboardButton("⚙️ لوحة الإدارة", callback_data="admin_panel")])
-
-    # أزرار معلومات (Removed, merged above)
-    # info_row = [ ... ]
-    # keyboard.append(info_row)
-
-    return InlineKeyboardMarkup(keyboard)
-
-
-# ==========================================
-# 🔙 دوال مساعدة للرجوع (Back Keyboards)
-# ==========================================
-
-def back_to_main_keyboard(label: str = "\U0001f3e0 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629") -> InlineKeyboardMarkup:
-    """
-    لوحة قياسية للرجوع إلى القائمة الرئيسية (back_main)
-
-    لا تغيّر منطق العمل: ما زال callback_data = "back_main"
-    """
-    return InlineKeyboardMarkup([[InlineKeyboardButton(label, callback_data="back_main")]])
-
+from core.keyboards import create_main_keyboard, back_to_main_keyboard
 
 def back_to_search_keyboard(label: str = "🔙 رجوع للبحث") -> InlineKeyboardMarkup:
     """
