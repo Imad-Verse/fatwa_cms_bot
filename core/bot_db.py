@@ -3,7 +3,7 @@ import aiosqlite
 import asyncio
 from typing import Dict, List, Optional
 
-from core.config import BOT_DB_NAME, OWNER_ID
+from core.config import BOT_DB_PATH, OWNER_ID
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class BotDatabaseManager:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, db_name: str = BOT_DB_NAME, max_retries: int = 3, retry_delay: float = 1.0):
+    def __init__(self, db_name: str = BOT_DB_PATH, max_retries: int = 3, retry_delay: float = 1.0):
         self.db_name = db_name
         self.max_retries = max_retries
         self.retry_delay = retry_delay

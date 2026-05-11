@@ -3,7 +3,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
-from core.config import FATWAS_DB_NAME
+from core.config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ class DatabaseBase:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def __init__(self, db_name=FATWAS_DB_NAME, max_retries=3, retry_delay=1.0):
+    def __init__(self, db_name=DB_PATH, max_retries=3, retry_delay=1.0):
         self.db_name = db_name
         self.max_retries = max_retries
         self.retry_delay = retry_delay
