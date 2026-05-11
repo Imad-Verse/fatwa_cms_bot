@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -113,7 +113,7 @@ async def start_add_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "➕ **إضافة مصدر**\n\nأرسل اسم المصدر الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_sources")]])
     )
-    return STATE_SOURCE_ADD
+    return BotState.STATE_SOURCE_ADD
 
 
 async def receive_new_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -142,7 +142,7 @@ async def start_edit_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "✏️ **تعديل اسم المصدر**\n\nأرسل الاسم الجديد للمصدر:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_source_{source_id}")]])
     )
-    return STATE_SOURCE_EDIT
+    return BotState.STATE_SOURCE_EDIT
 
 
 async def receive_edit_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -247,8 +247,8 @@ source_conv = ConversationHandler(
         CallbackQueryHandler(start_edit_source, pattern='^edit_source_')
     ],
     states={
-        STATE_SOURCE_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_source)],
-        STATE_SOURCE_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_source)]
+        BotState.STATE_SOURCE_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_source)],
+        BotState.STATE_SOURCE_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_source)]
     },
     fallbacks=[CallbackQueryHandler(manage_sources, pattern='^manage_sources')]
 )

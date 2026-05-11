@@ -88,7 +88,7 @@ async def podcast_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]]),
         parse_mode='Markdown'
     )
-    return STATE_PODCAST_CONTENT
+    return BotState.STATE_PODCAST_CONTENT
 
 
 async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -205,14 +205,14 @@ async def start_edit_podcast_broadcast(update: Update, context: ContextTypes.DEF
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel")]]),
         parse_mode="Markdown"
     )
-    return STATE_PODCAST_EDIT
+    return BotState.STATE_PODCAST_EDIT
 
 async def receive_podcast_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """استلام النص الجديد وتعديل الرسائل"""
     message = update.message
     if not message.text:
         await message.reply_text("⚠️ يرجى إرسال نص فقط للتعديل.")
-        return STATE_PODCAST_EDIT
+        return BotState.STATE_PODCAST_EDIT
         
     sent_messages = context.user_data.get("podcast_sent_messages", [])
     if not sent_messages:

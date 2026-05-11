@@ -260,7 +260,7 @@ async def start_add_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel")]]),
     )
-    return STATE_ADMIN_ADD
+    return BotState.STATE_ADMIN_ADD
 
 async def receive_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (update.message.text or "").strip()
@@ -271,12 +271,12 @@ async def receive_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         target_user_id = int(text)
         if target_user_id <= 0:
             await update.message.reply_text("❌ الآيدي غير صالح.")
-            return STATE_ADMIN_ADD
+            return BotState.STATE_ADMIN_ADD
     else:
         username_candidate = text[1:] if text.startswith("@") else text
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{4,31}", username_candidate):
             await update.message.reply_text("❌ أدخل `User ID` صحيح أو `@username` صحيح.", parse_mode="Markdown")
-            return STATE_ADMIN_ADD
+            return BotState.STATE_ADMIN_ADD
 
         user_row = await bot_db.get_user_by_username(username_candidate)
         if user_row:
@@ -287,14 +287,14 @@ async def receive_admin_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 chat = await context.bot.get_chat(f"@{username_candidate}")
                 if getattr(chat, "type", "") != "private":
                     await update.message.reply_text("❌ هذا اليوزر لا يشير إلى حساب مستخدم خاص.")
-                    return STATE_ADMIN_ADD
+                    return BotState.STATE_ADMIN_ADD
                 target_user_id = int(chat.id)
                 target_username = chat.username or username_candidate
             except Exception:
                 await update.message.reply_text(
                     "❌ تعذر العثور على هذا اليوزر.\nتأكد من صحة اليوزر وأن المستخدم بدأ البوت أولاً."
                 )
-                return STATE_ADMIN_ADD
+                return BotState.STATE_ADMIN_ADD
 
     if await bot_db.add_admin(target_user_id, target_username):
         if target_username:
@@ -381,7 +381,7 @@ async def start_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="Markdown"
     )
-    return STATE_ADMIN_REMOVE
+    return BotState.STATE_ADMIN_REMOVE
 
 async def handle_remove_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """معالجة حذف المسؤول عند الضغط على زر الحذف."""

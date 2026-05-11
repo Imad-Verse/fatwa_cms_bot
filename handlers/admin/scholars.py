@@ -164,14 +164,14 @@ async def start_add_scholar_admin(update: Update, context: ContextTypes.DEFAULT_
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")]]),
         parse_mode='Markdown'
     )
-    return STATE_SCHOLAR_ADD
+    return BotState.STATE_SCHOLAR_ADD
 
 
 async def receive_new_scholar_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = sanitize_input(update.message.text, max_length=200)
     if not name:
         await update.message.reply_text("⚠️ عذراً، يجب إرسال اسم العالم بشكل نصي.")
-        return STATE_SCHOLAR_ADD
+        return BotState.STATE_SCHOLAR_ADD
 
     scholar_id = await db.add_scholar(name)
     if scholar_id:
@@ -215,7 +215,7 @@ async def start_add_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"scholar_view_{scholar_id}")]]),
         parse_mode='Markdown'
     )
-    return STATE_SCHOLAR_BIO
+    return BotState.STATE_SCHOLAR_BIO
 
 
 async def receive_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -235,7 +235,7 @@ async def receive_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TYPE
         "✅ تم استلام السيرة الذاتية.\nالمرحلة التالية هي إضافة الموقع الرسمي.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
-    return STATE_SCHOLAR_BIO_CONFIRM
+    return BotState.STATE_SCHOLAR_BIO_CONFIRM
 
 
 async def confirm_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -251,7 +251,7 @@ async def confirm_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TYPE
         "🌐 أرسل رابط الموقع الرسمي للعالم:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"scholar_view_{scholar_id}")]])
     )
-    return STATE_SCHOLAR_WEBSITE
+    return BotState.STATE_SCHOLAR_WEBSITE
 
 
 async def receive_scholar_website(update: Update, context: ContextTypes.DEFAULT_TYPE):

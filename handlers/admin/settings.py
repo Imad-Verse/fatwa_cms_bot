@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -131,7 +131,9 @@ async def start_set_daily_time(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")]]),
         parse_mode='Markdown'
     )
-    return STATE_SETTINGS_DAILY_TIME
+    return BotState.STATE_SETTINGS_DAILY_TIME
+...
+    return BotState.STATE_SETTINGS_WEEKLY_TIME
 
 async def start_set_weekly_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -145,7 +147,7 @@ async def start_set_weekly_time(update: Update, context: ContextTypes.DEFAULT_TY
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")]]),
         parse_mode='Markdown'
     )
-    return STATE_SETTINGS_WEEKLY_TIME
+    return BotState.STATE_SETTINGS_WEEKLY_TIME
 
 async def start_set_weekly_day(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -210,7 +212,7 @@ async def receive_daily_time(update: Update, context: ContextTypes.DEFAULT_TYPE)
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")]])
         )
-        return STATE_SETTINGS_DAILY_TIME
+        return BotState.STATE_SETTINGS_DAILY_TIME
 
     hh, mm = parsed
     time_str = _format_time(hh, mm)
@@ -235,7 +237,7 @@ async def receive_weekly_time(update: Update, context: ContextTypes.DEFAULT_TYPE
             parse_mode='Markdown',
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")]])
         )
-        return STATE_SETTINGS_WEEKLY_TIME
+        return BotState.STATE_SETTINGS_WEEKLY_TIME
 
     hh, mm = parsed
     time_str = _format_time(hh, mm)
@@ -265,8 +267,8 @@ settings_conv = ConversationHandler(
         CallbackQueryHandler(start_set_weekly_time, pattern='^set_weekly_time$'),
     ],
     states={
-        STATE_SETTINGS_DAILY_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_daily_time)],
-        STATE_SETTINGS_WEEKLY_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_weekly_time)],
+        BotState.STATE_SETTINGS_DAILY_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_daily_time)],
+        BotState.STATE_SETTINGS_WEEKLY_TIME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_weekly_time)],
     },
     fallbacks=[
         CallbackQueryHandler(settings_panel, pattern='^admin_settings$'),

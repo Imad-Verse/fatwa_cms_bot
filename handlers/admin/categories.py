@@ -137,7 +137,7 @@ async def start_add_category_admin(update: Update, context: ContextTypes.DEFAULT
         f"🏷️ أرسل اسم التصنيف **{label}** الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="manage_categories")]])
     )
-    return STATE_CATEGORY_ADD
+    return BotState.STATE_CATEGORY_ADD
 
 
 async def handle_category_type_filter(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -179,7 +179,7 @@ async def start_search_category_admin(update: Update, context: ContextTypes.DEFA
         "🔍 **بحث في التصنيفات**\nأرسل اسم التصنيف للبحث عنه:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="manage_categories")]])
     )
-    return STATE_ADMIN_SEARCH_CAT
+    return BotState.STATE_ADMIN_SEARCH_CAT
 
 async def receive_category_search_term(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.message.text
@@ -205,7 +205,7 @@ async def start_edit_category_name(update: Update, context: ContextTypes.DEFAULT
         "📝 **تعديل اسم التصنيف**\nأرسل الاسم الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"view_topics_cat_{cat_id}")]])
     )
-    return STATE_CATEGORY_EDIT
+    return BotState.STATE_CATEGORY_EDIT
 
 async def receive_edit_category_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_name = sanitize_input(update.message.text)
@@ -256,7 +256,7 @@ async def start_add_topic_admin(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['add_topic_cat_id'] = cat_id
 
     await query.edit_message_text("أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"view_topics_cat_{cat_id}")]]))
-    return STATE_TOPIC_ADD
+    return BotState.STATE_TOPIC_ADD
 
 async def receive_new_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = sanitize_input(update.message.text)
@@ -397,7 +397,7 @@ async def start_edit_topic_admin(update: Update, context: ContextTypes.DEFAULT_T
         f"📝 **تعديل الموضوع: {topic['name']}**\nأرسل الاسم الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"manage_topic_{topic_id}")]])
     )
-    return STATE_TOPIC_EDIT
+    return BotState.STATE_TOPIC_EDIT
 
 async def receive_edit_topic_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_name = sanitize_input(update.message.text)
