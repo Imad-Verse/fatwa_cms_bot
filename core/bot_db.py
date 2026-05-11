@@ -4,65 +4,19 @@ import asyncio
 from typing import Dict, List, Optional
 
 from core.config import BOT_DB_PATH, OWNER_ID
+from core.database.base import DatabaseBase
 
 logger = logging.getLogger(__name__)
 
 
-class BotDatabaseManager:
+class BotDatabaseManager(DatabaseBase):
     """إدارة البيانات التشغيلية الداخلية للبوت (المستخدمين، الإعدادات، القنوات) - نسخة Async."""
 
-    _instance = None
-    _initialized = False
-
-    def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
-
     def __init__(self, db_name: str = BOT_DB_PATH, max_retries: int = 3, retry_delay: float = 1.0):
-        self.db_name = db_name
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        # init_db must be called explicitly as it is async
-
-    async def execute_with_retry(self, func, *args, **kwargs):
-        """
-        تنفيذ دالة مع إعادة المحاولة في حال كانت قاعدة البيانات مقفلة (Locked).
-        """
-        for attempt in range(self.max_retries):
-            try:
-                return await func(*args, **kwargs)
-            except aiosqlite.OperationalError as e:
-                if "database is locked" in str(e) and attempt < self.max_retries - 1:
-                    logger.warning(f"Database locked, retrying ({attempt + 1}/{self.max_retries})...")
-                    await asyncio.sleep(self.retry_delay)
-                    continue
-                raise
-            except Exception as e:
-                logger.error(f"Database error: {e}")
-                raise
-
-    async def get_connection(self):
-        """إنشاء اتصال مع قاعدة البيانات وتفعيل وضع الأداء العالي (WAL)."""
-        try:
-            conn = await aiosqlite.connect(self.db_name, timeout=30.0)
-            conn.row_factory = aiosqlite.Row
-            try:
-                # إعدادات تحسين الأداء لـ SQLite
-                await conn.execute("PRAGMA journal_mode=WAL")
-                await conn.execute("PRAGMA synchronous=NORMAL")
-                await conn.execute("PRAGMA foreign_keys=ON")
-                await conn.execute("PRAGMA temp_store=MEMORY")
-                await conn.execute("PRAGMA busy_timeout = 5000")
-            except Exception as e:
-                logger.warning(f"SQLite PRAGMA setup failed: {e}")
-            return conn
-        except Exception as e:
-            logger.error(f"Error connecting to database: {e}")
-            raise
+        super().__init__(db_name, max_retries, retry_delay)
 
     async def init_db(self):
-        if BotDatabaseManager._initialized:
+        if self._initialized:
             return
             
         async def _init():
@@ -190,7 +144,7 @@ class BotDatabaseManager:
                     await conn.close()
 
         await self.execute_with_retry(_init)
-        BotDatabaseManager._initialized = True
+        self._initialized = True
 
     # Users
     async def add_user(self, user_id: int, username: str = None, full_name: str = None):

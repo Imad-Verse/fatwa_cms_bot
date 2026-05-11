@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
@@ -27,12 +28,23 @@ async def delete_fatwa_from_all(update: Update, context: ContextTypes.DEFAULT_TY
         await query.message.reply_text("ℹ️ لا توجد رسائل محفوظة.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]))
         return
     deleted, failed = 0, 0
-    for chat_id_raw, msg_ids in fatwa_store.items():
+    status_msg = await query.message.reply_text(f"⏳ جاري الحذف من القنوات والمجموعات... (0/0)")
+    
+    total_chats = len(fatwa_store)
+    for i, (chat_id_raw, msg_ids) in enumerate(fatwa_store.items()):
         for msg_id in msg_ids:
-            try: await context.bot.delete_message(chat_id=int(chat_id_raw), message_id=int(msg_id)); deleted += 1
+            try: 
+                await context.bot.delete_message(chat_id=int(chat_id_raw), message_id=int(msg_id))
+                deleted += 1
             except Exception: failed += 1
+        
+        if (i + 1) % 5 == 0:
+            try: await status_msg.edit_text(f"⏳ جاري الحذف... ({i+1}/{total_chats})\n✅ حُذفت: {deleted}\n⚠️ فشلت: {failed}")
+            except Exception: pass
+        await asyncio.sleep(0.05)
+
     store.pop(str(fatwa_id), None)
-    await query.message.reply_text(f"✅ تم تنفيذ الحذف.\n🗑️ حُذفت: {deleted}\n⚠️ فشلت: {failed}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]))
+    await status_msg.edit_text(f"✅ تم تنفيذ الحذف الشامل.\n🗑️ المجموع المحذوف: {deleted}\n⚠️ الفشل: {failed}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]))
 
 async def publish_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

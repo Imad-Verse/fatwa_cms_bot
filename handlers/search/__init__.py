@@ -8,7 +8,7 @@ from telegram.ext import (
     CallbackQueryHandler, 
     filters
 )
-from core.config import *
+from core.config import BotState
 from core.bot_db import BotDatabaseManager
 from core.database import FatwaDatabaseManager
 
@@ -61,13 +61,13 @@ async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("🔎 قائمة البحث:", reply_markup=create_search_keyboard())
     else:
         await update.message.reply_text("🔎 قائمة البحث:", reply_markup=create_search_keyboard())
-    return STATE_SEARCH
+    return BotState.STATE_SEARCH
 
 async def search_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🤖 **البحث بالذكاء الاصطناعي**\n\nأرسل سؤالك أو الحالة التي تبحث عنها، وسأقوم باستخراج المصطلحات الفقهية المناسبة والبحث عنها دلالياً:")
-    return STATE_SEARCH_AI
+    return BotState.STATE_SEARCH_AI
 
 async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_query = update.message.text
@@ -120,7 +120,7 @@ async def search_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🔍 **البحث الشامل**\n\nأرسل كلمة أو جملة للبحث عنها في العناوين والأسئلة والأجوبة:")
-    return STATE_SEARCH_ALL
+    return BotState.STATE_SEARCH_ALL
 
 async def perform_search_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.message.text
@@ -137,13 +137,13 @@ async def search_number_prompt(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🔢 أرسل رقم الفتوى للبحث عنها مباشرة:")
-    return STATE_SEARCH_NUMBER
+    return BotState.STATE_SEARCH_NUMBER
 
 async def perform_search_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     num_str = update.message.text.strip()
     if not num_str.isdigit():
         await update.message.reply_text("⚠️ يرجى إرسال رقم صحيح.")
-        return STATE_SEARCH_NUMBER
+        return BotState.STATE_SEARCH_NUMBER
     
     fatwa = await db.get_fatwa_by_number(int(num_str))
     if not fatwa:
@@ -160,7 +160,7 @@ async def search_title_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     await query.edit_message_text("🏷️ أرسل عنوان الفتوى أو كلمات منه:")
-    return STATE_SEARCH_TITLE
+    return BotState.STATE_SEARCH_TITLE
 
 async def perform_search_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.message.text
@@ -183,7 +183,7 @@ async def search_latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     results, total = await db.get_all_fatwas(status='published' if public_only else None, limit=5, offset=0)
     await display_search_results(update, context, results, "📅 أحدث الفتاوى", min(total, LATEST_LIMIT), is_callback=True, back_callback="browse_fatwas")
-    return STATE_SEARCH
+    return BotState.STATE_SEARCH
 
 async def search_popular(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -195,7 +195,7 @@ async def search_popular(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }
     results, total = await _fetch_popular_fatwas(public_only, limit=5, offset=0, max_total=POPULAR_LIMIT)
     await display_search_results(update, context, results, "🔥 الأكثر مشاهدة", total, is_callback=True, back_callback="browse_fatwas")
-    return STATE_SEARCH
+    return BotState.STATE_SEARCH
 
 # --- Proxies ---
 
@@ -223,7 +223,7 @@ search_conv = ConversationHandler(
         CallbackQueryHandler(search_ai_prompt, pattern='^search_ai$')
     ],
     states={
-        STATE_SEARCH: [
+        BotState.STATE_SEARCH: [
             CallbackQueryHandler(start_search, pattern='^search_fatwas$'),
             CallbackQueryHandler(start_smart_search, pattern='^search_smart$'),
             CallbackQueryHandler(search_ai_prompt, pattern='^search_ai$'),
@@ -252,14 +252,14 @@ search_conv = ConversationHandler(
             CallbackQueryHandler(search_popular, pattern='^search_popular$'),
             CallbackQueryHandler(back_to_main, pattern='^back_main$')
         ],
-        STATE_SEARCH_AI: [
+        BotState.STATE_SEARCH_AI: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_search_ai_query),
             CallbackQueryHandler(search_ai_prompt, pattern='^search_ai$'),
             CallbackQueryHandler(start_search, pattern='^search_fatwas$'),
             CallbackQueryHandler(cancel_operation, pattern='^cancel$'),
             CallbackQueryHandler(back_to_main, pattern='^back_main$')
         ],
-        STATE_SEARCH_SMART: [
+        BotState.STATE_SEARCH_SMART: [
             CallbackQueryHandler(start_smart_search, pattern='^search_smart$'),
             CallbackQueryHandler(smart_toggle_title, pattern='^smart_toggle_title$'),
             CallbackQueryHandler(smart_toggle_text, pattern='^smart_toggle_text$'),
@@ -268,25 +268,25 @@ search_conv = ConversationHandler(
             CallbackQueryHandler(smart_cancel, pattern='^smart_cancel$'),
             CallbackQueryHandler(back_to_main, pattern='^back_main$')
         ],
-        STATE_SMART_SEARCH_SCHOLARS: [
+        BotState.STATE_SMART_SEARCH_SCHOLARS: [
             CallbackQueryHandler(handle_smart_scholar_selection, pattern='^smart_sch_'),
             CallbackQueryHandler(start_smart_search, pattern='^search_smart$')
         ],
-        STATE_SMART_SEARCH_QUERY: [
+        BotState.STATE_SMART_SEARCH_QUERY: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_smart_search_query),
             CallbackQueryHandler(start_smart_search, pattern='^search_smart$')
         ],
-        STATE_SEARCH_TITLE: [
+        BotState.STATE_SEARCH_TITLE: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_search_title),
             CallbackQueryHandler(start_search, pattern='^search_fatwas$'),
             CallbackQueryHandler(back_to_main, pattern='^back_main$')
         ],
-        STATE_SEARCH_ALL: [
+        BotState.STATE_SEARCH_ALL: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_search_all),
             CallbackQueryHandler(start_search, pattern='^search_fatwas$'),
             CallbackQueryHandler(back_to_main, pattern='^back_main$')
         ],
-        STATE_SEARCH_NUMBER: [
+        BotState.STATE_SEARCH_NUMBER: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_search_number),
             CallbackQueryHandler(start_search, pattern='^search_fatwas$'),
             CallbackQueryHandler(back_to_main, pattern='^back_main$')

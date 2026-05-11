@@ -28,7 +28,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import OWNER_ID, BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -351,16 +351,55 @@ async def list_admins_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         parse_mode='HTML'
     )
 
-# Remove logic similar to Add (omitted for brevity, assume implemented in same pattern)
+# ==================== إدارة المسؤولين ====================
+
 async def start_remove_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """عرض قائمة المسؤولين لحذف أحدهم."""
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
-        "⚠️ ميزة حذف المسؤولين تحت التطوير حالياً.",
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_admins")]])
-    )
-    return ConversationHandler.END
+    
+    admins = await bot_db.get_admins()
+    # استبعاد المالك من قائمة الحذف
+    admins_to_remove = [a for a in admins if int(a['user_id']) != int(OWNER_ID)]
+    
+    if not admins_to_remove:
+        await query.edit_message_text(
+            "⚠️ لا يوجد مسؤولون آخرون لحذفهم.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_admins")]])
+        )
+        return ConversationHandler.END
 
+    keyboard = []
+    for a in admins_to_remove:
+        name = f"@{a['username']}" if a['username'] else f"ID: {a['user_id']}"
+        keyboard.append([InlineKeyboardButton(f"❌ {name}", callback_data=f"del_adm_{a['user_id']}")])
+    
+    keyboard.append([InlineKeyboardButton("🔙 إلغاء", callback_data="manage_admins")])
+    
+    await query.edit_message_text(
+        "🗑️ **حذف مسؤول**\nاختر المسؤول الذي تريد حذفه:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="Markdown"
+    )
+    return STATE_ADMIN_REMOVE
+
+async def handle_remove_admin_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """معالجة حذف المسؤول عند الضغط على زر الحذف."""
+    query = update.callback_query
+    await query.answer()
+    
+    target_id = int(query.data.split("_")[-1])
+    if await bot_db.remove_admin(target_id):
+        await query.edit_message_text(
+            f"✅ تم حذف المسؤول (ID: {target_id}) بنجاح.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_admins")]])
+        )
+    else:
+        await query.edit_message_text(
+            "❌ فشل حذف المسؤول أو أنه غير موجود.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_admins")]])
+        )
+    return ConversationHandler.END
 
 admin_conv = ConversationHandler(
     entry_points=[
@@ -368,10 +407,14 @@ admin_conv = ConversationHandler(
         CallbackQueryHandler(start_remove_admin, pattern='^remove_admin$')
     ],
     states={
-        STATE_ADMIN_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_id)],
-        STATE_ADMIN_REMOVE: [CallbackQueryHandler(start_remove_admin, pattern='^remove_admin_')] # Placeholder
+        BotState.STATE_ADMIN_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_admin_id)],
+        BotState.STATE_ADMIN_REMOVE: [CallbackQueryHandler(handle_remove_admin_callback, pattern='^del_adm_')]
     },
-    fallbacks=[CallbackQueryHandler(admin_panel, pattern='^admin_panel$'), CommandHandler('cancel', admin_panel)]
+    fallbacks=[
+        CallbackQueryHandler(admin_panel, pattern='^admin_panel$'),
+        CallbackQueryHandler(manage_admins, pattern='^manage_admins$'),
+        CommandHandler('cancel', admin_panel)
+    ]
 )
 
 

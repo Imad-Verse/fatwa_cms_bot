@@ -9,19 +9,21 @@ logger = logging.getLogger(__name__)
 
 class DatabaseBase:
     """Base class for Database Manager with singleton and connection logic (Async)."""
-    _instance = None
-    _initialized = False
+    _instances = {}
 
     def __new__(cls, *args, **kwargs):
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-        return cls._instance
+        if cls not in cls._instances:
+            cls._instances[cls] = super().__new__(cls)
+        return cls._instances[cls]
 
     def __init__(self, db_name=DB_PATH, max_retries=3, retry_delay=1.0):
+        if hasattr(self, '_initialized_per_instance') and self._initialized_per_instance:
+            return
         self.db_name = db_name
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        # Note: init_db must be called explicitly now as it is async
+        self._initialized_per_instance = True
+        self._initialized = False # This is for init_db logic
 
     async def execute_with_retry(self, func, *args, **kwargs):
         """Execute an async database operation with retry logic for locked databases."""
@@ -65,7 +67,7 @@ class DatabaseBase:
 
     async def init_db(self):
         """Initialize the database schema if it doesn't exist."""
-        if DatabaseBase._initialized:
+        if self._initialized:
             return
 
         async def _init_db():
@@ -228,7 +230,7 @@ class DatabaseBase:
                     await conn.close()
         
         await self.execute_with_retry(_init_db)
-        DatabaseBase._initialized = True
+        self._initialized = True
 
     async def vacuum(self):
         """Optimize the database using VACUUM."""

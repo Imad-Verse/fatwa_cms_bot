@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -81,14 +81,19 @@ async def show_scholars_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
     text = f"👤 **إدارة العلماء** (صفحة {page + 1})\nإجمالي العلماء: {total_count}\n\n"
     keyboard = []
 
-    for s in scholars:
-        keyboard.append([InlineKeyboardButton(s['name'], callback_data=f"scholar_view_{s['id']}")])
-
+    # Navigation Buttons (Top)
     nav_buttons = []
     if page > 0:
         nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"scholars_list_{page-1}"))
     if offset + ITEMS_PER_PAGE < total_count:
         nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"scholars_list_{page+1}"))
+    
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+
+    for s in scholars:
+        keyboard.append([InlineKeyboardButton(s['name'], callback_data=f"scholar_view_{s['id']}")])
+
     if nav_buttons:
         keyboard.append(nav_buttons)
 
@@ -274,10 +279,10 @@ scholar_conv = ConversationHandler(
         CallbackQueryHandler(start_add_scholar_bio, pattern='^scholar_bio_')
     ],
     states={
-        STATE_SCHOLAR_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_scholar_admin)],
-        STATE_SCHOLAR_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_bio)],
-        STATE_SCHOLAR_BIO_CONFIRM: [CallbackQueryHandler(confirm_scholar_bio, pattern='^scholar_bio_done$')],
-        STATE_SCHOLAR_WEBSITE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_website)]
+        BotState.STATE_SCHOLAR_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_scholar_admin)],
+        BotState.STATE_SCHOLAR_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_bio)],
+        BotState.STATE_SCHOLAR_BIO_CONFIRM: [CallbackQueryHandler(confirm_scholar_bio, pattern='^scholar_bio_done$')],
+        BotState.STATE_SCHOLAR_WEBSITE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_website)]
     },
     fallbacks=[
         CallbackQueryHandler(manage_scholars_panel, pattern='^manage_scholars$'),

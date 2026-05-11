@@ -40,12 +40,16 @@ async def display_search_results(update, context, results, title, total_count, i
         nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"res_page_{page-1}"))
     if (page + 1) * 5 < total_count:
         nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"res_page_{page+1}"))
+    
     if nav_row:
-        keyboard.append(nav_row)
+        keyboard.insert(0, nav_row) # Top
 
     # Fatwa quick view buttons
     for fatwa in results:
         keyboard.append([InlineKeyboardButton(f"📖 عرض #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")])
+
+    if nav_row:
+        keyboard.append(nav_row)    # Bottom
 
     # Back button
     keyboard.append([InlineKeyboardButton(back_label or "🔙 رجوع", callback_data=back_callback)])

@@ -73,9 +73,6 @@ logging.getLogger("telegram").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-async def maintenance_mode_guard_internal(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إيقاف تفاعل المستخدمين غير المسؤولين أثناء وضع الصيانة."""
-    return await maintenance_mode_guard(update, context)
 
 async def main():
     """الدالة الرئيسية لنقطة انطلاق البوت (Async)."""
@@ -130,7 +127,7 @@ async def main():
 
     # تسجيل المعالجات
     # 0. حارس وضع الصيانة (قبل كل المعالجات الأخرى)
-    app.add_handler(TypeHandler(Update, maintenance_mode_guard_internal), group=-1)
+    app.add_handler(TypeHandler(Update, maintenance_mode_guard), group=-1)
 
     # تسجيل جميع المعالجات من السجل الموحد
     register_all_handlers(app)
@@ -174,41 +171,25 @@ async def main():
         from core.maintenance import periodic_maintenance_job
         app.job_queue.run_repeating(periodic_maintenance_job, interval=86400, first=60, name='maintenance')
 
+    # التشغيل
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+
     logger.info("Bot is online and ready to serve!")
     print("\n" + "="*50)
     print("      [ BOT IS RUNNING ]")
     print("="*50 + "\n")
-    
-    # استخدام run_polling كـ async إذا أردنا أو استخدام الاختصار المعتاد
-    # PTB's run_polling() is blocking but can be used in a wrapper. 
-    # For a fully async start, we can use app.initialize(), app.start(), app.updater.start_polling()
-    # But PTB's Application.run_polling() handles the event loop if not already running.
-    # Since we are already in an async loop (asyncio.run), we should use a non-blocking start or just call it if it supports it.
-    # Actually, Application.run_polling() is designed to be the entry point.
-    # However, if we are ALREADY in an async loop, we should use:
-    # await app.initialize()
-    # await app.start()
-    # await app.updater.start_polling()
-    # await idle()
-    
-    # BUT, Application.run_polling() is very convenient. Let's see if we can use it.
-    # In PTB 20.x, run_polling is synchronous and starts its own loop.
-    # To run it from an existing loop, we might need a different approach.
-    
-    # Wait, I'll use the standard way:
-    # app.run_polling() inside a synchronous main or use the async approach.
-    
-    # Actually, I'll change main() back to synchronous and just run the async parts using asyncio.run.
-    # But it's better to have one loop.
-    
-    # Let's do it this way:
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    
-    # Keep the script running
-    while True:
-        await asyncio.sleep(3600)
+
+    # الانتظار بشكل آمن
+    try:
+        stop_event = asyncio.Event()
+        await stop_event.wait()
+    finally:
+        logger.info("Shutting down bot...")
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
 
 if __name__ == '__main__':
     try:

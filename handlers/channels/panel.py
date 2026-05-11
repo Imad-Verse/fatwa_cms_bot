@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import html
 from typing import Optional
@@ -78,13 +79,28 @@ async def list_channels_handler(
             lines.append(f"{idx}. {title} | {username} | <code>{ch['chat_id']}</code> | {item_state}")
 
     text = "\n".join(lines)
-    prev_page, next_page = (page - 1 if page > 0 else page), (page + 1 if page < total_pages - 1 else page)
+    # Navigation Rows
+    prev_page_cb = f"list_{c_type}_{status}_{page - 1}" if page > 0 else "noop"
+    next_page_cb = f"list_{c_type}_{status}_{page + 1}" if page < total_pages - 1 else "noop"
     toggle_label = "⚫ غير النشطة" if status == 'active' else "✅ النشطة"
     toggle_status = "inactive" if status == 'active' else "active"
 
-    keyboard = [[InlineKeyboardButton("⬅️ السابق", callback_data=f"list_{c_type}_{status}_{prev_page}"), InlineKeyboardButton(toggle_label, callback_data=f"list_{c_type}_{toggle_status}_0"), InlineKeyboardButton("التالي ➡️", callback_data=f"list_{c_type}_{status}_{next_page}")]]
-    if status == 'inactive' and total_count: keyboard.append([InlineKeyboardButton("🗑️ حذف الكل (خروج)", callback_data=f"cleanup_{c_type}")])
+    nav_row = [
+        InlineKeyboardButton("⬅️ السابق", callback_data=prev_page_cb),
+        InlineKeyboardButton(toggle_label, callback_data=f"list_{c_type}_{toggle_status}_0"),
+        InlineKeyboardButton("التالي ➡️", callback_data=next_page_cb)
+    ]
+
+    keyboard = [nav_row] # Top
+    # In a real app we'd add list items here if they were buttons, but they are text.
+    # So we just repeat the nav row at the bottom.
+
+    if status == 'inactive' and total_count:
+        keyboard.append([InlineKeyboardButton("🗑️ حذف الكل (خروج)", callback_data=f"cleanup_{c_type}")])
+    
+    keyboard.append(nav_row) # Bottom
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="manage_channels")])
+    
     await _safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def cleanup_inactive(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -95,7 +111,15 @@ async def cleanup_inactive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if c_type not in {"channel", "group"}: return
     channels = await bot_db.get_channels(status='inactive', chat_type=c_type)
     removed, kept, reactivated = 0, 0, 0
-    for ch in channels:
+    total = len(channels)
+    
+    if total == 0:
+        await query.answer("✅ لا توجد قنوات/مجموعات غير نشطة لتنظيفها.")
+        return
+
+    status_msg = await query.message.reply_text(f"⏳ جاري بدء تنظيف {total} من القنوات/المجموعات...")
+
+    for idx, ch in enumerate(channels):
         chat_id, should_remove = ch['chat_id'], False
         try:
             member = await context.bot.get_chat_member(chat_id, context.bot.id)
@@ -109,9 +133,20 @@ async def cleanup_inactive(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             if _is_bot_removed_chat_error(e): should_remove = True
             else: kept += 1
+        
         if should_remove:
             if await bot_db.remove_channel(chat_id): removed += 1
             try: await context.bot.leave_chat(chat_id)
             except: pass
-    await query.message.reply_text(f"✅ اكتمل تنظيف غير النشطة.\n🗑️ المحذوف: {removed}\n🔄 عاد للنشاط: {reactivated}\n📌 الإبقاء عليه: {kept}")
+            
+        # تأخير لتجنب الضغط
+        await asyncio.sleep(0.05)
+        
+        # تحديث التقدم
+        if (idx + 1) % 10 == 0:
+            try:
+                await status_msg.edit_text(f"⏳ جاري التنظيف... ({idx + 1}/{total})\n🗑️ محذوف: {removed}\n🔄 نشط: {reactivated}")
+            except: pass
+
+    await status_msg.edit_text(f"✅ اكتمل تنظيف غير النشطة.\n🗑️ المحذوف: {removed}\n🔄 عاد للنشاط: {reactivated}\n📌 الإبقاء عليه: {kept}")
     await list_channels_handler(update, context, c_type_override=c_type, status_override='inactive', page_override=0)

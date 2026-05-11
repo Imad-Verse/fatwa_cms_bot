@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -77,6 +77,16 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     keyboard.append(add_row)
 
+    # Navigation Row (Top)
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"manage_categories_page_{page-1}"))
+    if offset + ITEMS_PER_PAGE < total_count:
+        nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"manage_categories_page_{page+1}"))
+    
+    if nav_row:
+        keyboard.append(nav_row)
+
     # بناء الشبكة الثنائية
     if categories:
         grid_rows = []
@@ -94,44 +104,9 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         keyboard.append([InlineKeyboardButton("🚫 لا توجد تصنيفات", callback_data="noop")])
 
-    # أزرار التنقل (متقابلة)
-    nav_buttons = []
-    # زر السابق (يمين لأنه عربي)
-    prev_btn = InlineKeyboardButton("⬅️ السابق", callback_data=f"manage_categories_page_{page-1}")
-    # زر التالي (يسار)
-    next_btn = InlineKeyboardButton("➡️ التالي", callback_data=f"manage_categories_page_{page+1}")
-
-    # في تيليجرام الترتيب يسار->يمين، لذا الأول يسار والثاني يمين.
-    # لغة عربية: نريد [التالي] [السابق] لكي يظهر التالي على اليسار والسابق على اليمين؟
-    # عادة: [<< Prev] [Next >>]
-    # لنجعلها: [السابق] [التالي]
-
-    nav_row = []
-    if page > 0:
-        nav_row.append(prev_btn)
-
-    if offset + ITEMS_PER_PAGE < total_count:
-        # إذا كان زر السابق موجود، نضعهما في صف واحد
-        # إذا لم يكن، زر التالي لوحده
-        nav_row.insert(0, next_btn) # نضيف التالي في البداية ليظهر على اليسار؟
-        # لحظة، القوائم العربية تبدأ من اليمين في العرض؟ لا، Telegram buttons are LTR by default layout.
-        # [Btn1] [Btn2] -> Btn1 Left, Btn2 Right.
-        # We want: [Next] [Prev] -> Next (Left), Prev (Right)? Or standard [Prev] [Next]?
-        # User said: "ازرار الانتقال متقابلة وفوق قائمة التصنيفات متقابلة ايضا" ???
-        # "فوق قائمة التصنيفات متقابلة ايضا" -> maybe he means pagination ON TOP as well?
-        # Let's stick to BOTTOM pagination for now, standard [Prev] [Next] (Prev Left, Next Right) is standard.
-        # User said "متقابلة". I'll put them in one row [Prev, Next].
-        pass
-
-    # Re-logic for nav:
-    real_nav_row = []
-    if page > 0:
-        real_nav_row.append(prev_btn)
-    if offset + ITEMS_PER_PAGE < total_count:
-        real_nav_row.append(next_btn)
-
-    if real_nav_row:
-        keyboard.append(real_nav_row)
+    # Navigation Row (Bottom)
+    if nav_row:
+        keyboard.append(nav_row)
 
     # أزرار التحكم السفلية
     keyboard.append([InlineKeyboardButton("🔙 رجوع للوحة", callback_data="admin_panel")])
@@ -259,11 +234,11 @@ category_conv = ConversationHandler(
         CallbackQueryHandler(cancel_category_search_admin, pattern='^admin_search_cat_cancel$')
     ],
     states={
-        STATE_CATEGORY_ADD: [
+        BotState.STATE_CATEGORY_ADD: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_category)
         ],
-        STATE_ADMIN_SEARCH_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_category_search_term)],
-        STATE_CATEGORY_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_category_name)]
+        BotState.STATE_ADMIN_SEARCH_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_category_search_term)],
+        BotState.STATE_CATEGORY_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_category_name)]
     },
     fallbacks=[CallbackQueryHandler(manage_categories, pattern='^manage_categories')]
 )
@@ -337,6 +312,16 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard.append(action_row)
         keyboard.append([InlineKeyboardButton("🗑️ حذف التصنيف", callback_data=f"confirm_delete_category_{cat_id}")])
 
+        # Navigation Buttons (Shared for Top and Bottom)
+        nav_row = []
+        if page > 0:
+            nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"view_topics_cat_{cat_id}_page_{page-1}"))
+        if offset + ITEMS_PER_PAGE < total_count:
+            nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"view_topics_cat_{cat_id}_page_{page+1}"))
+            
+        if nav_row:
+            keyboard.append(nav_row)
+
         # عرض المواضيع في شبكة ثنائية
         if topics:
             grid_rows = []
@@ -354,14 +339,7 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         else:
             keyboard.append([InlineKeyboardButton("🚫 لا توجد مواضيع", callback_data="noop")])
 
-        # التنقل (متقابلة)
-        nav_row = []
-        if page > 0:
-            nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"view_topics_cat_{cat_id}_page_{page-1}"))
-
-        if offset + ITEMS_PER_PAGE < total_count:
-            nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"view_topics_cat_{cat_id}_page_{page+1}"))
-
+        # Bottom Navigation
         if nav_row:
             keyboard.append(nav_row)
 
@@ -539,8 +517,8 @@ topic_conv = ConversationHandler(
         CallbackQueryHandler(delete_topic_handler, pattern='^delete_topic_')
     ],
     states={
-        STATE_TOPIC_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_topic)],
-        STATE_TOPIC_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_topic_name)]
+        BotState.STATE_TOPIC_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_topic)],
+        BotState.STATE_TOPIC_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_edit_topic_name)]
     },
     fallbacks=[CallbackQueryHandler(view_topics_handler, pattern='^view_topics_cat_')]
 )

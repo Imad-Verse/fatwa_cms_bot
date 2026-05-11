@@ -3,7 +3,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, ConversationHandler
 from core.bot_db import BotDatabaseManager
 from core.database import FatwaDatabaseManager
-from core.config import STATE_SEARCH_SMART, STATE_SMART_SEARCH_SCHOLARS, STATE_SMART_SEARCH_QUERY
+from core.config import BotState
 from core.utils import callback_guard
 from .keyboards import _build_smart_search_keyboard
 from .pagination import display_search_results
@@ -45,7 +45,7 @@ async def smart_toggle_title(update: Update, context: ContextTypes.DEFAULT_TYPE)
     state = _get_smart_state(context)
     state['title'] = not state['title']
     await _render_smart_menu(query, context)
-    return STATE_SEARCH_SMART
+    return BotState.STATE_SEARCH_SMART
 
 async def smart_toggle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -53,13 +53,13 @@ async def smart_toggle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = _get_smart_state(context)
     state['text'] = not state['text']
     await _render_smart_menu(query, context)
-    return STATE_SEARCH_SMART
+    return BotState.STATE_SEARCH_SMART
 
 async def smart_open_scholars(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await show_smart_scholars_list(query, context)
-    return STATE_SMART_SEARCH_SCHOLARS
+    return BotState.STATE_SMART_SEARCH_SCHOLARS
 
 async def smart_search_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -67,10 +67,10 @@ async def smart_search_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
     state = _get_smart_state(context)
     if not state['title'] and not state['text'] and not state['scholars']:
         await query.message.reply_text("⚠️ يرجى اختيار فلتر واحد على الأقل.")
-        return STATE_SEARCH_SMART
+        return BotState.STATE_SEARCH_SMART
     
     await query.edit_message_text("⌨️ يرجى إرسال كلمة البحث:")
-    return STATE_SMART_SEARCH_QUERY
+    return BotState.STATE_SMART_SEARCH_QUERY
 
 async def smart_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -95,8 +95,10 @@ async def show_smart_scholars_list(update_obj, context: ContextTypes.DEFAULT_TYP
         nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"smart_sch_page_{page-1}"))
     if (page + 1) * 10 < total:
         nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"smart_sch_page_{page+1}"))
+    
     if nav_row:
-        keyboard.append(nav_row)
+        keyboard.insert(0, nav_row) # Top
+        keyboard.append(nav_row)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔙 إنهاء الاختيار", callback_data="search_smart")])
     
@@ -114,7 +116,7 @@ async def handle_smart_scholar_selection(update: Update, context: ContextTypes.D
     if data[2] == 'page':
         page = int(data[3])
         await show_smart_scholars_list(query, context, page)
-        return STATE_SMART_SEARCH_SCHOLARS
+        return BotState.STATE_SMART_SEARCH_SCHOLARS
 
     scholar_id = int(data[2])
     page = int(data[3])
@@ -126,7 +128,7 @@ async def handle_smart_scholar_selection(update: Update, context: ContextTypes.D
         state['scholars'].append(scholar_id)
     
     await show_smart_scholars_list(query, context, page)
-    return STATE_SMART_SEARCH_SCHOLARS
+    return BotState.STATE_SMART_SEARCH_SCHOLARS
 
 async def perform_smart_search_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query_text = update.message.text

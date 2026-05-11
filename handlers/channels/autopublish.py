@@ -162,10 +162,15 @@ async def start_select_publish_category(update: Update, context: ContextTypes.DE
     keyboard = []
     for i in range(0, len(categories), 2):
         keyboard.append([InlineKeyboardButton(name, callback_data=f"set_pub_cat_{cid}") for cid, name in categories[i:i+2]])
-    nav = []
-    if page > 0: nav.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"sel_pub_cat_page_{page-1}"))
-    if offset + ITEMS < total: nav.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sel_pub_cat_page_{page+1}"))
-    if nav: keyboard.append(nav)
+    # Navigation Row
+    nav_row = []
+    if page > 0: nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"sel_pub_cat_page_{page-1}"))
+    if offset + ITEMS < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sel_pub_cat_page_{page+1}"))
+    
+    if nav_row:
+        keyboard.insert(0, nav_row) # Top
+        keyboard.append(nav_row)    # Bottom
+
     keyboard.append([InlineKeyboardButton("🔍 بحث عن تصنيف", callback_data="search_pub_cat")])
     if search_query: keyboard.append([InlineKeyboardButton("🔙 إلغاء البحث", callback_data="clear_pub_cat_search")])
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="targeted_publish_panel")])
@@ -258,10 +263,15 @@ async def start_select_publish_topics(update: Update, context: ContextTypes.DEFA
     keyboard = []
     for i in range(0, len(topics), 2):
         keyboard.append([InlineKeyboardButton(f"✅ {n}" if tid in selected_ids else n, callback_data=f"toggle_pub_top_{tid}_{page}") for tid, n in topics[i:i+2]])
-    nav = []
-    if page > 0: nav.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"sel_pub_top_page_{page-1}"))
-    if offset + ITEMS < total: nav.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sel_pub_top_page_{page+1}"))
-    if nav: keyboard.append(nav)
+    # Navigation Row
+    nav_row = []
+    if page > 0: nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"sel_pub_top_page_{page-1}"))
+    if offset + ITEMS < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sel_pub_top_page_{page+1}"))
+    
+    if nav_row:
+        keyboard.insert(0, nav_row) # Top
+        keyboard.append(nav_row)    # Bottom
+
     if selected_ids: keyboard.append([InlineKeyboardButton("🧹 مسح الاختيار", callback_data="clear_pub_topics")])
     keyboard.extend([[InlineKeyboardButton("✅ تم", callback_data="targeted_publish_panel")], [InlineKeyboardButton("🔙 رجوع", callback_data="targeted_publish_panel")]])
     preview = _build_topic_selection_preview(selected_ids, topic_map) if total > 0 else "لا توجد مواضيع"

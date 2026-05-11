@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -113,7 +113,7 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
     store[broadcast_id] = {'cancel': False}
 
     cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton("🛑 إلغاء العملية", callback_data=f"podcast_cancel_{broadcast_id}")]])
-    await update.message.reply_text("🔄 جاري بدء عملية الإرسال...", reply_markup=cancel_btn)
+    status_msg = await update.message.reply_text("🔄 جاري بدء عملية الإرسال...", reply_markup=cancel_btn)
 
     report = {'success': 0, 'fail': 0}
     canceled = False
@@ -121,15 +121,14 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
     broadcast_text = _build_podcast_template(message.text or message.caption or "")
     sent_messages = []
 
-    for user_id in users:
+    for idx, user_id in enumerate(users):
         if store.get(broadcast_id, {}).get('cancel'):
             canceled = True
             break
+            
         try:
             msg = await _send_podcast_to_user(context, user_id, message, broadcast_text, podcast_markup)
             if msg:
-                # copy_message returns a MessageId object which has message_id,
-                # send_message returns a Message object which has message_id
                 msg_id = getattr(msg, 'message_id', None)
                 if msg_id:
                     sent_messages.append({"chat_id": user_id, "message_id": msg_id})
@@ -139,6 +138,19 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
             err = str(e).lower()
             if 'forbidden' in err or 'bot was blocked' in err or 'user is deactivated' in err:
                 await bot_db.set_user_blocked(user_id, True)
+        
+        # تأخير بسيط لتجنب الـ Flood Limits
+        await asyncio.sleep(0.05)
+        
+        # تحديث رسالة التقدم كل 50 مستخدم
+        if (idx + 1) % 50 == 0:
+            try:
+                await status_msg.edit_text(
+                    f"🔄 جاري الإرسال... ({idx + 1}/{total_targets})\n✅ نجاح: {report['success']}\n❌ فشل: {report['fail']}",
+                    reply_markup=cancel_btn
+                )
+            except Exception:
+                pass
 
     store.pop(broadcast_id, None)
     
@@ -161,7 +173,7 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
         ])
     keyboard.append([InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")])
 
-    await update.message.reply_text(summary, reply_markup=InlineKeyboardMarkup(keyboard))
+    await status_msg.edit_text(summary, reply_markup=InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
 
@@ -274,8 +286,8 @@ podcast_conv = ConversationHandler(
         CallbackQueryHandler(delete_podcast_broadcast, pattern='^podcast_del_bc$')
     ],
     states={
-        STATE_PODCAST_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_podcast_content)],
-        STATE_PODCAST_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_podcast_edit)]
+        BotState.STATE_PODCAST_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_podcast_content)],
+        BotState.STATE_PODCAST_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_podcast_edit)]
     },
     fallbacks=[CallbackQueryHandler(admin_panel, pattern='^admin_panel$')]
 )

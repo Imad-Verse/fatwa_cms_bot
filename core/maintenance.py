@@ -4,6 +4,7 @@ import logging
 import shutil
 from datetime import datetime, timedelta
 from telegram.ext import ContextTypes
+from core.config import LOGS_DIR, TEMP_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +18,10 @@ async def periodic_maintenance_job(context: ContextTypes.DEFAULT_TYPE):
     logger.info("🧹 Starting periodic maintenance job...")
     
     # 1. Cleanup Logs
-    log_dir = "logs"
-    if os.path.exists(log_dir):
+    if os.path.exists(LOGS_DIR):
         now = time.time()
-        for f in os.listdir(log_dir):
-            fpath = os.path.join(log_dir, f)
+        for f in os.listdir(LOGS_DIR):
+            fpath = os.path.join(LOGS_DIR, f)
             if os.stat(fpath).st_mtime < now - (30 * 86400):
                 try:
                     os.remove(fpath)
@@ -30,10 +30,9 @@ async def periodic_maintenance_job(context: ContextTypes.DEFAULT_TYPE):
                     logger.warning(f"Failed to remove log {f}: {e}")
 
     # 2. Cleanup Temp
-    temp_dir = "temp"
-    if os.path.exists(temp_dir):
-        for f in os.listdir(temp_dir):
-            fpath = os.path.join(temp_dir, f)
+    if os.path.exists(TEMP_DIR):
+        for f in os.listdir(TEMP_DIR):
+            fpath = os.path.join(TEMP_DIR, f)
             try:
                 if os.path.isfile(fpath):
                     os.remove(fpath)
@@ -49,6 +48,10 @@ async def periodic_maintenance_job(context: ContextTypes.DEFAULT_TYPE):
         
         fatwa_db = FatwaDatabaseManager()
         bot_db = BotDatabaseManager()
+        
+        # Ensure they are initialized (though they should be)
+        await fatwa_db.init_db()
+        await bot_db.init_db()
         
         await fatwa_db.vacuum()
         await bot_db.vacuum()

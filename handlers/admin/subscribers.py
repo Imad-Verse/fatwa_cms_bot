@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import OWNER_ID
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -164,14 +164,22 @@ async def cleanup_inactive_subscribers(update: Update, context: ContextTypes.DEF
         return
 
     users = await bot_db.get_inactive_users()
+    total_users = len(users)
+    
+    if total_users == 0:
+        await query.answer("✅ لا يوجد مستخدمون غير نشطين لتنظيفهم.")
+        return
+
+    status_msg = await query.message.reply_text(f"⏳ جاري بدء تنظيف {total_users} مستخدم...")
 
     removed_count = 0
     reactivated_count = 0
     kept_count = 0
 
-    for user_row in users:
+    for idx, user_row in enumerate(users):
         user_id = int(user_row["user_id"])
         try:
+            # نحاول إرسال Chat Action للتحقق من أن المستخدم لم يحظر البوت
             await context.bot.send_chat_action(chat_id=user_id, action="typing")
             await bot_db.set_user_blocked(user_id, False)
             reactivated_count += 1
@@ -184,9 +192,21 @@ async def cleanup_inactive_subscribers(update: Update, context: ContextTypes.DEF
             else:
                 kept_count += 1
                 logger.debug(f"Skipping cleanup for user {user_id}; could not verify removal state: {e}")
+        
+        # تأخير بسيط لتجنب الـ Rate Limits
+        await asyncio.sleep(0.05)
+        
+        # تحديث رسالة التقدم كل 50 مستخدم
+        if (idx + 1) % 50 == 0:
+            try:
+                await status_msg.edit_text(
+                    f"⏳ جاري التنظيف... ({idx + 1}/{total_users})\n🗑️ محذوف: {removed_count}\n🔄 مفعل: {reactivated_count}"
+                )
+            except Exception:
+                pass
 
-    await query.message.reply_text(
-        "✅ اكتمل تنظيف المستخدمين غير النشطين.\n"
+    await status_msg.edit_text(
+        "✅ اكتمل تنظيف المستخدمين غير النشطين.\n\n"
         f"🗑️ المحذوف (حظر/تعطيل فعلي): {removed_count}\n"
         f"🔄 عاد للنشاط تلقائيًا: {reactivated_count}\n"
         f"📌 تم الإبقاء عليه (تعذر التحقق): {kept_count}"

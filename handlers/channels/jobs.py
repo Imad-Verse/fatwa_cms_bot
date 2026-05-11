@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import datetime, timedelta
 from typing import List
@@ -51,6 +52,7 @@ async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = Fals
                 if ch['chat_id'] in sent_to: continue
                 sent_msg = await context.bot.send_message(chat_id=ch['chat_id'], text=text, reply_markup=markup)
                 _register_delivery_message(context, fatwa['id'], ch['chat_id'], sent_msg.message_id); sent_to.add(ch['chat_id']); count_ch += 1
+                await asyncio.sleep(0.05) # Delay
             except Exception as e:
                 logger.error(f"Failed to auto-publish to {ch['chat_id']}: {e}")
                 if "Forbidden" in str(e) or "chat not found" in str(e).lower(): await bot_db.update_channel_status(ch['chat_id'], 'inactive')
@@ -62,6 +64,7 @@ async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = Fals
                 if uid in sent_to: continue
                 sent_msg = await context.bot.send_message(chat_id=uid, text=text, reply_markup=markup)
                 _register_delivery_message(context, fatwa['id'], uid, sent_msg.message_id); sent_to.add(uid); count_us += 1
+                await asyncio.sleep(0.05) # Delay
             except: pass
 
         admins = await bot_db.get_admins()
@@ -117,7 +120,9 @@ async def weekly_fatwa_report_job(context: ContextTypes.DEFAULT_TYPE):
 
         for uid in users:
             try:
-                for part in parts: await safe_send_message(context.bot, uid, part)
+                for part in parts: 
+                    await safe_send_message(context.bot, uid, part)
+                    await asyncio.sleep(0.05) # Delay
             except Exception as e:
                 if any(x in str(e).lower() for x in ("forbidden", "blocked", "deactivated")): await bot_db.set_user_blocked(uid, True)
         await bot_db.set_setting('weekly_report_last_run', now_utc.isoformat())

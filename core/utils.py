@@ -125,18 +125,19 @@ class CallbackGuard:
     def __init__(self, min_interval: float = 1.5):
         self.min_interval = min_interval
         self.last_pressed = defaultdict(dict)  # {user_id: {data: timestamp}}
-        self.lock = threading.Lock()
+        self.lock = asyncio.Lock()
 
-    def is_fast_repeat(self, user_id: int, data: str) -> bool:
+    async def is_fast_repeat(self, user_id: int, data: str, interval: float = None) -> bool:
         """
-        يعيد True إذا كان الضغط مكرراً خلال فترة أقل من min_interval
+        يعيد True إذا كان الضغط مكرراً خلال فترة أقل من interval
         وإلا يقوم بتسجيل الوقت الحالي ويعيد False.
         """
         now = time.time()
-        with self.lock:
+        check_interval = interval if interval is not None else self.min_interval
+        async with self.lock:
             user_map = self.last_pressed[user_id]
             last_time = user_map.get(data, 0)
-            if now - last_time < self.min_interval:
+            if now - last_time < check_interval:
                 return True
             user_map[data] = now
             return False
@@ -161,17 +162,8 @@ def callback_guard(min_interval: float = 1.5):
             user_id = update.effective_user.id
             data = query.data or ""
             
-            # استخدام الحارس العالمي
-            # نقوم بتعديل الـ interval مؤقتاً إذا مرر المستخدم قيمة مختلفة
-            original_interval = _global_callback_guard_manager.min_interval
-            _global_callback_guard_manager.min_interval = min_interval
-            
-            is_fast = _global_callback_guard_manager.is_fast_repeat(user_id, data)
-            
-            # إعادة الـ interval للقيمة الافتراضية
-            _global_callback_guard_manager.min_interval = original_interval
-            
-            if is_fast:
+            # استخدام الحارس العالمي مع التمرير المباشر للـ interval
+            if await _global_callback_guard_manager.is_fast_repeat(user_id, data, interval=min_interval):
                 try:
                     await query.answer("⏳ يرجى الانتظار قليلاً...", show_alert=False)
                 except Exception:

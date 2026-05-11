@@ -14,7 +14,7 @@ from telegram.error import BadRequest
 
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import *
+from core.config import BACKUP_DIR
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown, notify_new_subscription
@@ -200,7 +200,8 @@ async def show_missing_links(update: Update, context: ContextTypes.DEFAULT_TYPE)
         nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"missing_links_{link_type}_{page+1}"))
 
     if nav_buttons:
-        keyboard.append(nav_buttons)
+        keyboard.insert(0, nav_buttons) # Top
+        keyboard.append(nav_buttons)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔙 إدارة الروابط", callback_data="manage_links")])
 
