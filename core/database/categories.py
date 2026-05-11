@@ -1,6 +1,7 @@
 import logging
 import aiosqlite
 from typing import Dict, List, Optional, Tuple
+from core.utils import cached_async, cache
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +50,9 @@ class CategoriesMixin:
                         return True
                     async with conn.execute("UPDATE categories SET name = ? WHERE id = ?", (new_name, cat_id)) as cursor:
                         await conn.commit()
+                        # إبطال الكاش
+                        cache.delete_pattern("get_categories")
+                        cache.delete_pattern(f"get_category:({self}, {cat_id})")
                         return cursor.rowcount > 0
                 return False
             finally:
@@ -69,6 +73,9 @@ class CategoriesMixin:
                 await conn.execute("DELETE FROM fatwa_categories WHERE category_id = ?", (cat_id,))
                 async with conn.execute("DELETE FROM categories WHERE id = ?", (cat_id,)) as cursor:
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern("get_categories")
+                    cache.delete_pattern(f"get_category:({self}, {cat_id})")
                     return cursor.rowcount > 0
             finally:
                 if conn: await conn.close()
@@ -83,6 +90,9 @@ class CategoriesMixin:
                 await conn.execute("DELETE FROM fatwa_topics WHERE topic_id = ?", (topic_id,))
                 async with conn.execute("DELETE FROM topics WHERE id = ?", (topic_id,)) as cursor:
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern("get_topics")
+                    cache.delete_pattern(f"get_topic:({self}, {topic_id})")
                     return cursor.rowcount > 0
             finally:
                 if conn: await conn.close()
@@ -157,6 +167,7 @@ class CategoriesMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_merge)
 
+    @cached_async(ttl=1800)
     async def get_category(self, cat_id: int) -> Optional[Dict]:
         """Fetch a category by ID."""
         async def _get():
@@ -170,6 +181,7 @@ class CategoriesMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
 
+    @cached_async(ttl=600)
     async def get_categories(self, limit: int = None, offset: int = 0, search_query: str = None, category_type: str = None) -> List[Tuple[int, str]]:
         """Retrieve categories with search and type filtering."""
         async def _get():
@@ -215,6 +227,7 @@ class CategoriesMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_count)
 
+    @cached_async(ttl=600)
     async def get_topics(self, limit: int = None, offset: int = 0, search_query: str = None) -> List[Tuple[int, str]]:
         """Retrieve topics with search."""
         async def _get():
@@ -236,6 +249,7 @@ class CategoriesMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
 
+    @cached_async(ttl=600)
     async def get_topics_by_category(self, category_id: int, limit: int = None, offset: int = 0, search_query: str = None) -> List[Tuple[int, str]]:
         """Retrieve topics within a specific category."""
         async def _get():
@@ -287,6 +301,8 @@ class CategoriesMixin:
                         return existing['id']
                 async with conn.execute("INSERT INTO topics (name, category_id) VALUES (?, ?)", (name, category_id)) as cursor:
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern("get_topics")
                     return cursor.lastrowid
             except aiosqlite.IntegrityError:
                 if category_id is not None:
@@ -325,11 +341,15 @@ class CategoriesMixin:
                 conn = await self.get_connection()
                 async with conn.execute("UPDATE topics SET name = ? WHERE id = ?", (new_name, topic_id)) as cursor:
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern("get_topics")
+                    cache.delete_pattern(f"get_topic:({self}, {topic_id})")
                     return cursor.rowcount > 0
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_update)
 
+    @cached_async(ttl=1800)
     async def get_topic(self, topic_id: int) -> Optional[Dict]:
         """Fetch a specific topic by ID."""
         async def _get():

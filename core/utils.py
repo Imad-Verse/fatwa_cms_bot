@@ -54,9 +54,40 @@ class CacheManager:
             if key in self.cache:
                 del self.cache[key]
 
+    def delete_pattern(self, pattern: str):
+        """حذف المفاتيح التي تحتوي على نمط معين"""
+        with self.lock:
+            keys_to_delete = [k for k in self.cache.keys() if pattern in k]
+            for k in keys_to_delete:
+                del self.cache[k]
+
     def clear(self):
         with self.lock:
             self.cache.clear()
+
+def cached_async(ttl=300):
+    """
+    ديكوريتور لتخزين نتائج الدوال غير المتزامنة (Async) مؤقتاً.
+    
+    Args:
+        ttl: مدة صلاحية التخزين بالثواني (الافتراضي 5 دقائق).
+    """
+    def decorator(func):
+        @wraps(func)
+        async def wrapper(*args, **kwargs):
+            # إنشاء مفتاح فريد بناءً على اسم الدالة والوسائط
+            # نستخدم str() للوسائط لتبسيط الأمر، مع العلم أنها قد تكون غير قابلة للـ hash أحياناً
+            key = f"{func.__name__}:{args}:{kwargs}"
+            
+            cached_val = cache.get(key, ttl=ttl)
+            if cached_val is not None:
+                return cached_val
+            
+            result = await func(*args, **kwargs)
+            cache.set(key, result)
+            return result
+        return wrapper
+    return decorator
 
 class BotMonitor:
     """نظام مراقبة أداء البوت"""
@@ -216,7 +247,17 @@ class SingletonLock:
 # ==========================================
 
 def sanitize_input(text: str, max_length: int = 4000) -> str:
-    """تنظيف وتأمين المدخلات"""
+    """
+    تنظيف وتأمين المدخلات النصية.
+    يقوم بإزالة أي وسوم HTML محتملة وتحديد طول النص.
+
+    Args:
+        text (str): النص المدخل.
+        max_length (int): أقصى طول مسموح به.
+
+    Returns:
+        str: النص المنظف.
+    """
     if not text:
         return ""
     # إزالة الأكواد الخبيثة المحتملة (بسيط)
@@ -304,8 +345,18 @@ def normalize_text(text: str) -> str:
 from core.validators import is_valid_url, contains_url
 
 
-def split_long_message(text: str, max_length: int = 4000) -> list:
-    """تقسيم الرسائل الطويلة إلى أجزاء مناسبة لتليجرام، مع تفضيل حدود الفقرات."""
+def split_long_message(text: str, max_length: int = 4000) -> list[str]:
+    """
+    تقسيم الرسائل الطويلة إلى أجزاء مناسبة لتليجرام.
+    تحاول الدالة الحفاظ على وحدة الفقرات والجمل لضمان سهولة القراءة.
+
+    Args:
+        text (str): النص الكامل.
+        max_length (int): الحد الأقصى لكل جزء.
+
+    Returns:
+        list[str]: قائمة بالأجزاء المقسمة.
+    """
     if len(text) <= max_length:
         return [text]
 

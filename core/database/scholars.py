@@ -1,5 +1,6 @@
 import logging
 from typing import Dict, List, Optional, Tuple
+from core.utils import cached_async, cache
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class ScholarsMixin:
         await cursor.execute("INSERT INTO scholars (name) VALUES (?)", (scholar_name,))
         return cursor.lastrowid
 
+    @cached_async(ttl=600)
     async def get_scholars(self, limit: int = None, offset: int = 0, search_query: str = None) -> List[Tuple[int, str]]:
         """Retrieve scholars (ID and name) from scholars table."""
         async def _get():
@@ -75,6 +77,7 @@ class ScholarsMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
 
+    @cached_async(ttl=1800)
     async def get_scholar_by_id(self, scholar_id: int) -> Optional[Dict]:
         """Retrieve a specific scholar by ID."""
         async def _get():
@@ -100,6 +103,8 @@ class ScholarsMixin:
                         return row["id"]
                 await conn.execute("INSERT INTO scholars (name) VALUES (?)", (name,))
                 await conn.commit()
+                # إبطال كاش القوائم
+                cache.delete_pattern("get_scholars")
                 # To get lastrowid in aiosqlite, we might need a cursor
                 async with conn.execute("SELECT last_insert_rowid()") as cursor:
                     row = await cursor.fetchone()
@@ -119,6 +124,9 @@ class ScholarsMixin:
                     (biography, website, scholar_id)
                 ) as cursor:
                     await conn.commit()
+                    # إبطال كاش العالم والقوائم
+                    cache.delete_pattern("get_scholars")
+                    cache.delete_pattern(f"get_scholar_by_id:({self}, {scholar_id})")
                     return cursor.rowcount > 0
             finally:
                 if conn: await conn.close()

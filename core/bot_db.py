@@ -5,12 +5,21 @@ from typing import Dict, List, Optional
 
 from core.config import BOT_DB_PATH, OWNER_ID
 from core.database.base import DatabaseBase
+from core.utils import cache, cached_async
 
 logger = logging.getLogger(__name__)
 
 
 class BotDatabaseManager(DatabaseBase):
-    """إدارة البيانات التشغيلية الداخلية للبوت (المستخدمين، الإعدادات، القنوات) - نسخة Async."""
+    """
+    مدير البيانات التشغيلية للبوت (Internal Bot Manager).
+    مسؤول عن:
+    1. إدارة المستخدمين (المشتركين والمحظورين).
+    2. إدارة المسؤولين (Admins) وصلاحياتهم.
+    3. إدارة القنوات والمجموعات المشتركة في نظام النشر.
+    4. حفظ واسترجاع إعدادات النظام (Settings).
+    5. إدارة المفضلة للمستخدمين.
+    """
 
     def __init__(self, db_name: str = BOT_DB_PATH, max_retries: int = 3, retry_delay: float = 1.0):
         super().__init__(db_name, max_retries, retry_delay)
@@ -365,6 +374,7 @@ class BotDatabaseManager(DatabaseBase):
         return await self.execute_with_retry(_remove)
 
     # Admins
+    @cached_async(ttl=600)  # تخزين لمدة 10 دقائق
     async def is_admin(self, user_id: int) -> bool:
         async def _check():
             if user_id == OWNER_ID:
@@ -400,6 +410,8 @@ class BotDatabaseManager(DatabaseBase):
                 conn = await self.get_connection()
                 await conn.execute("INSERT INTO admins (user_id, username) VALUES (?, ?)", (user_id, username))
                 await conn.commit()
+                # إبطال الكاش
+                cache.delete(f"is_admin:({self}, {user_id}):{{}}")
                 return True
             except aiosqlite.IntegrityError:
                 return False
@@ -410,6 +422,7 @@ class BotDatabaseManager(DatabaseBase):
         return await self.execute_with_retry(_add)
 
     # Settings
+    @cached_async(ttl=300)
     async def get_setting(self, key: str, default: str = None) -> str:
         async def _get():
             conn = None
@@ -431,6 +444,8 @@ class BotDatabaseManager(DatabaseBase):
                 conn = await self.get_connection()
                 await conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
                 await conn.commit()
+                # إبطال الكاش الخاص بهذا المفتاح
+                cache.delete(f"get_setting:({self}, '{key}'):{{}}")
                 return True
             except Exception as e:
                 logger.error(f"Error setting value: {e}")

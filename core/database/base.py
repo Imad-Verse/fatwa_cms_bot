@@ -8,7 +8,11 @@ from core.config import DB_PATH
 logger = logging.getLogger(__name__)
 
 class DatabaseBase:
-    """Base class for Database Manager with singleton and connection logic (Async)."""
+    """
+    الفئة الأساسية لإدارة قواعد البيانات (Base Class).
+    تستخدم نمط Singleton لضمان وجود نسخة واحدة من الاتصال لكل قاعدة بيانات.
+    تدعم إعادة المحاولة التلقائية (Retry) وإعدادات الأداء العالي (WAL Mode).
+    """
     _instances = {}
 
     def __new__(cls, *args, **kwargs):
@@ -16,17 +20,27 @@ class DatabaseBase:
             cls._instances[cls] = super().__new__(cls)
         return cls._instances[cls]
 
-    def __init__(self, db_name=DB_PATH, max_retries=3, retry_delay=1.0):
+    def __init__(self, db_name: str = DB_PATH, max_retries: int = 3, retry_delay: float = 1.0):
+        """
+        تهيئة مدير قاعدة البيانات.
+        
+        Args:
+            db_name (str): مسار ملف قاعدة البيانات.
+            max_retries (int): أقصى عدد لمحاولات إعادة التنفيذ عند القفل.
+            retry_delay (float): التأخير بالثواني بين المحاولات.
+        """
         if hasattr(self, '_initialized_per_instance') and self._initialized_per_instance:
             return
         self.db_name = db_name
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self._initialized_per_instance = True
-        self._initialized = False # This is for init_db logic
+        self._initialized = False
 
-    async def execute_with_retry(self, func, *args, **kwargs):
-        """Execute an async database operation with retry logic for locked databases."""
+    async def execute_with_retry(self, func: callable, *args, **kwargs) -> any:
+        """
+        تنفيذ عملية غير متزامنة مع منطق إعادة المحاولة (Retry Logic).
+        """
         for attempt in range(self.max_retries):
             try:
                 return await func(*args, **kwargs)
@@ -41,13 +55,19 @@ class DatabaseBase:
                 logger.error(f"Database error: {e}")
                 raise
 
-    async def get_connection(self):
-        """Returns an aiosqlite connection with proper configuration."""
+    async def get_connection(self) -> aiosqlite.Connection:
+        """
+        إنشاء وتهيئة اتصال جديد بقاعدة البيانات مع ضبط إعدادات الأداء.
+        
+        Returns:
+            aiosqlite.Connection: كائن الاتصال المهيأ.
+        """
         try:
             from core.utils import remove_tashkeel, normalize_text
             conn = await aiosqlite.connect(self.db_name, timeout=30.0)
             conn.row_factory = aiosqlite.Row
             try:
+                # إعدادات تحسين الأداء (High Performance PRAGMAs)
                 await conn.execute("PRAGMA journal_mode=WAL")
                 await conn.execute("PRAGMA synchronous=NORMAL")
                 await conn.execute("PRAGMA foreign_keys=ON")
@@ -56,8 +76,7 @@ class DatabaseBase:
             except Exception as e:
                 logger.warning(f"SQLite PRAGMA setup failed: {e}")
             
-            # create_function is synchronous in aiosqlite's wrapper for some reason? 
-            # Actually, it's a method on the connection.
+            # تسجيل الدوال المخصصة للبحث العربي
             await conn.create_function("REMOVE_TASHKEEL", 1, remove_tashkeel)
             await conn.create_function("NORMALIZE_TEXT", 1, normalize_text)
             return conn

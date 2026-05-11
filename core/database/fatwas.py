@@ -2,7 +2,7 @@ import logging
 import aiosqlite
 import re
 from typing import Dict, List, Optional, Tuple
-from core.utils import remove_tashkeel
+from core.utils import remove_tashkeel, cached_async, cache
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,9 @@ class FatwasMixin:
                         await cursor.execute("INSERT OR IGNORE INTO fatwa_topics (fatwa_id, topic_id) VALUES (?, ?)", (fatwa_id, t_id))
                     
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern("get_all_fatwas")
+                    cache.delete_pattern("get_fatwas_count")
                     return fatwa_id
             finally:
                 if conn: await conn.close()
@@ -79,6 +82,10 @@ class FatwasMixin:
                 await conn.execute("DELETE FROM fatwa_categories WHERE fatwa_id = ?", (fatwa_id,))
                 async with conn.execute("DELETE FROM fatwas WHERE id = ?", (fatwa_id,)) as cursor:
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern(f"get_fatwa:({self}, {fatwa_id})")
+                    cache.delete_pattern("get_all_fatwas")
+                    cache.delete_pattern("get_fatwas_count")
                     return cursor.rowcount > 0
             finally:
                 if conn: await conn.close()
@@ -254,6 +261,7 @@ class FatwasMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
 
+    @cached_async(ttl=1200)
     async def get_fatwa(self, fatwa_id: int = None, fatwa_number: int = None) -> Optional[Dict]:
         """Fetch a single fatwa with all related info."""
         async def _get():
@@ -391,6 +399,9 @@ class FatwasMixin:
                             await cursor.execute("INSERT OR IGNORE INTO fatwa_topics (fatwa_id, topic_id) VALUES (?, ?)", (fatwa_id, t_id))
                     
                     await conn.commit()
+                    # إبطال كاش الفتوى والبحث
+                    cache.delete_pattern(f"get_fatwa:({self}, {fatwa_id})")
+                    cache.delete_pattern("get_all_fatwas")
                     return True
             finally:
                 if conn: await conn.close()
