@@ -743,6 +743,7 @@ async def start_edit_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE, f
 async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); data = query.data
     fatwa_id = context.user_data.get('edit_fatwa_id')
+
     if data == "cancel_edit":
         from handlers.fatwa_view import view_fatwa
         await view_fatwa(update, context, fatwa_id=fatwa_id); return ConversationHandler.END
@@ -755,6 +756,7 @@ async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['edit_field'] = "scholar_name"
         text, markup = _build_edit_field_prompt(db.get_fatwa(fatwa_id), "scholar_name", f"edit_fatwa_{fatwa_id}")
         await query.edit_message_text(text, reply_markup=markup); return STATE_EDIT_VALUE
+
     if data.startswith("edit_slot_"):
         slot = int(data.split('_')[-1]); context.user_data['edit_taxonomy_slot'] = slot
         summary = _format_edit_slot_summary(db.get_fatwa(fatwa_id), slot)
@@ -763,6 +765,39 @@ async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kb = _pair_buttons(actions)
         kb.append([InlineKeyboardButton("🔙 رجوع", callback_data=f"edit_fatwa_{fatwa_id}")])
         await query.edit_message_text(f"🏷️ تعديل النوع {slot}\n\nالتصنيفات الحالية:\n{summary}\n\nاختر الإجراء:", reply_markup=InlineKeyboardMarkup(kb)); return STATE_EDIT_MENU
+
+    if data.startswith("edit_tax_cat_") or data.startswith("add_another_cat_"):
+        slot = int(data.split('_')[-1])
+        context.user_data['edit_taxonomy_slot'] = slot
+        context.user_data['edit_append_mode'] = data.startswith("add_another_cat_")
+        await show_edit_categories_step(update, context)
+        return STATE_EDIT_CATEGORY
+
+    if data.startswith("edit_tax_top_"):
+        slot = int(data.split('_')[-1])
+        context.user_data['edit_taxonomy_slot'] = slot
+        fatwa = db.get_fatwa(fatwa_id)
+        cls_list = [c for c in fatwa.get('classifications', []) if c.get('slot_index') == slot]
+        if not cls_list:
+            await query.answer("⚠️ لا يوجد تصنيف لهذا النوع. اختر تصنيفاً أولاً.", show_alert=True)
+            return STATE_EDIT_MENU
+        cat_id = cls_list[0]['category_id']
+        context.user_data['edit_topic_cat_id'] = cat_id
+        await show_edit_topics_step(update, context, cat_id=cat_id)
+        return STATE_EDIT_TOPIC
+
+    if data == "delete_all_fatwa_classifications":
+        db.update_fatwa(fatwa_id, {'classifications': []})
+        await query.answer("🗑️ تم حذف كافة التصنيفات")
+        return await start_edit_fatwa(update, context, fatwa_id=fatwa_id)
+
+    if data == "delete_slot_2":
+        fatwa = db.get_fatwa(fatwa_id)
+        cls = [c for c in fatwa.get('classifications', []) if c.get('slot_index') != 2]
+        db.update_fatwa(fatwa_id, {'classifications': cls})
+        await query.answer("🗑️ تم حذف التصنيف الموضوعي")
+        return await start_edit_fatwa(update, context, fatwa_id=fatwa_id)
+
     field_map = {"edit_field_title": "title", "edit_field_scholar": "scholar_name", "edit_field_question": "question", "edit_field_text": "answer", "edit_field_source_name": "source_name", "edit_field_source_title": "source_title", "edit_field_source_url": "source_url", "edit_field_audio": "audio_url"}
     if data in field_map:
         f = field_map[data]; context.user_data['edit_field'] = f
@@ -778,44 +813,122 @@ async def receive_edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def handle_edit_category_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); data = query.data
     fatwa_id = context.user_data.get('edit_fatwa_id')
+    slot = context.user_data.get('edit_taxonomy_slot', 1)
+
     if data == "search_edit_cat":
-        await query.edit_message_text("🔍 أرسل اسم التصنيف للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_cat_search_cancel")]]))
+        await query.edit_message_text(
+            "🔍 أرسل اسم التصنيف للبحث عنه:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_cat_search_cancel")]])
+        )
         return STATE_EDIT_CAT_SEARCH
+    if data == "edit_cat_search_cancel":
+        context.user_data.pop(f'edit_cat_search_{slot}', None)
+        await show_edit_categories_step(update, context, page=0)
+        return STATE_EDIT_CATEGORY
     if data == "add_new_edit_cat":
-        await query.edit_message_text("🏷️ أرسل اسم التصنيف الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_cat")]]))
+        await query.edit_message_text(
+            "🏷️ أرسل اسم التصنيف الجديد:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_cat")]])
+        )
         return STATE_EDIT_NEW_CAT
+    if data == "cancel_new_cat":
+        await show_edit_categories_step(update, context, page=0)
+        return STATE_EDIT_CATEGORY
+    if data.startswith("edit_cat_page_"):
+        page = int(data.split('_')[-1])
+        await show_edit_categories_step(update, context, page=page)
+        return STATE_EDIT_CATEGORY
     if data.startswith("edit_cat_"):
-        cat_id = int(data.split('_')[-1]); slot = context.user_data.get('edit_taxonomy_slot', 1)
+        cat_id = int(data.split('_')[-1])
         fatwa = db.get_fatwa(fatwa_id); cls = fatwa.get('classifications', [])
-        found = False
-        for c in cls:
-            if c['slot_index'] == slot: c['category_id'] = cat_id; c['topic_ids'] = []; found = True; break
-        if not found: cls.append({'category_id': cat_id, 'topic_ids': [], 'slot_index': slot})
-        db.update_fatwa(fatwa_id, {'classifications': cls}); context.user_data['edit_topic_cat_id'] = cat_id
+        append_mode = context.user_data.get('edit_append_mode', False)
+        
+        if not append_mode:
+            # Replace mode: remove existing in this slot
+            cls = [c for c in cls if c['slot_index'] != slot]
+            cls.append({'category_id': cat_id, 'topic_ids': [], 'slot_index': slot})
+        else:
+            # Append mode: check if already exists
+            if not any(c['category_id'] == cat_id and c['slot_index'] == slot for c in cls):
+                cls.append({'category_id': cat_id, 'topic_ids': [], 'slot_index': slot})
+        
+        db.update_fatwa(fatwa_id, {'classifications': cls})
+        context.user_data['edit_topic_cat_id'] = cat_id
         return await show_edit_topics_step(update, context, cat_id=cat_id)
     return STATE_EDIT_CATEGORY
 
 async def show_edit_topics_step(update, context, cat_id=None, page=0, search_query=None):
+    ITEMS_PER_PAGE = 8
+    offset = page * ITEMS_PER_PAGE
     cat_row = db.get_category(cat_id); cat_name = cat_row['name'] if cat_row else "غير محدد"
-    topics = db.get_topics_by_category(cat_id); slot = context.user_data.get('edit_taxonomy_slot', 1)
+    
+    if search_query is None:
+        search_query = context.user_data.get(f'edit_topic_search_{cat_id}')
+    else:
+        context.user_data[f'edit_topic_search_{cat_id}'] = search_query
+
+    topics = db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query)
+    total_count = db.get_topics_count(cat_id, search_query=search_query)
+    slot = context.user_data.get('edit_taxonomy_slot', 1)
     fatwa = db.get_fatwa(context.user_data.get('edit_fatwa_id'))
+    
     current_topics = []
     for cls in fatwa.get('classifications', []):
         if cls['slot_index'] == slot and cls['category_id'] == cat_id:
             current_topics = cls.get('topic_ids', []); break
+            
     kb = []
     for tid, name in topics:
         kb.append(InlineKeyboardButton(f"✅ {name}" if tid in current_topics else name, callback_data=f"edit_toggle_top_{tid}"))
     keyboard = _pair_buttons(kb)
+    
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"edit_top_page_{page-1}"))
+    if offset + ITEMS_PER_PAGE < total_count: nav.append(InlineKeyboardButton("➡️ التالي", callback_data=f"edit_top_page_{page+1}"))
+    if nav: keyboard.append(nav)
+
+    keyboard.append([
+        InlineKeyboardButton("🔍 بحث موضوع", callback_data="search_edit_topic"),
+        InlineKeyboardButton("➕ موضوع جديد", callback_data="add_new_edit_topic")
+    ])
     keyboard.append([InlineKeyboardButton("📌 حفظ المواضيع", callback_data="edit_done_topics")])
     keyboard.append([InlineKeyboardButton("🔙 رجوع للتعديل", callback_data=f"edit_fatwa_{fatwa['id']}")])
-    await update.callback_query.edit_message_text(f"🏷️ التصنيف: {cat_name}\n📑 عدل المواضيع:", reply_markup=InlineKeyboardMarkup(keyboard))
+    
+    msg = f"🏷️ التصنيف: {cat_name}\n📑 عدل المواضيع:"
+    if update.callback_query:
+        await update.callback_query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     return STATE_EDIT_TOPIC
 
 async def handle_edit_topic_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); data = query.data
     fatwa_id = context.user_data.get('edit_fatwa_id'); slot = context.user_data.get('edit_taxonomy_slot', 1)
     cat_id = context.user_data.get('edit_topic_cat_id')
+    
+    if data == "search_edit_topic":
+        await query.edit_message_text(
+            "🔍 أرسل اسم الموضوع للبحث عنه:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_topic_search_cancel")]])
+        )
+        return STATE_EDIT_TOP_SEARCH
+    if data == "edit_topic_search_cancel":
+        context.user_data.pop(f'edit_topic_search_{cat_id}', None)
+        await show_edit_topics_step(update, context, cat_id=cat_id, page=0)
+        return STATE_EDIT_TOPIC
+    if data == "add_new_edit_topic":
+        await query.edit_message_text(
+            "📑 أرسل اسم الموضوع الجديد:",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_topic")]])
+        )
+        return STATE_EDIT_NEW_TOP
+    if data == "cancel_new_topic":
+        await show_edit_topics_step(update, context, cat_id=cat_id, page=0)
+        return STATE_EDIT_TOPIC
+    if data.startswith("edit_top_page_"):
+        page = int(data.split('_')[-1])
+        await show_edit_topics_step(update, context, cat_id=cat_id, page=page)
+        return STATE_EDIT_TOPIC
     if data.startswith("edit_toggle_top_"):
         topic_id = int(data.split('_')[-1]); fatwa = db.get_fatwa(fatwa_id); cls = fatwa.get('classifications', [])
         for c in cls:
@@ -829,16 +942,47 @@ async def handle_edit_topic_selection(update: Update, context: ContextTypes.DEFA
     return STATE_EDIT_TOPIC
 
 async def handle_edit_cat_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.message.text.strip(); await show_edit_categories_step(update, context, search_query=query)
+    query = update.message.text.strip()
+    slot = context.user_data.get('edit_taxonomy_slot', 1)
+    context.user_data[f'edit_cat_search_{slot}'] = query
+    await show_edit_categories_step(update, context, search_query=query)
     return STATE_EDIT_CATEGORY
 
+async def handle_edit_topic_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
+    cat_id = context.user_data.get('edit_topic_cat_id')
+    context.user_data[f'edit_topic_search_{cat_id}'] = query
+    await show_edit_topics_step(update, context, cat_id=cat_id, search_query=query)
+    return STATE_EDIT_TOPIC
+
 async def show_edit_categories_step(update, context, page=0, search_query=None):
+    ITEMS_PER_PAGE = 8
+    offset = page * ITEMS_PER_PAGE
     slot = context.user_data.get('edit_taxonomy_slot', 1); cat_type = "fiqh" if slot == 1 else "topic"
-    cats = db.get_categories(search_query=search_query, category_type=cat_type)
+    
+    if search_query is None:
+        search_query = context.user_data.get(f'edit_cat_search_{slot}')
+    else:
+        context.user_data[f'edit_cat_search_{slot}'] = search_query
+
+    cats = db.get_categories(limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query, category_type=cat_type)
+    total_count = db.get_categories_count(search_query=search_query, category_type=cat_type)
+    
     kb = []
     for cid, name in cats: kb.append(InlineKeyboardButton(name, callback_data=f"edit_cat_{cid}"))
     keyboard = _pair_buttons(kb)
+    
+    nav = []
+    if page > 0: nav.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"edit_cat_page_{page-1}"))
+    if offset + ITEMS_PER_PAGE < total_count: nav.append(InlineKeyboardButton("➡️ التالي", callback_data=f"edit_cat_page_{page+1}"))
+    if nav: keyboard.append(nav)
+
+    keyboard.append([
+        InlineKeyboardButton("🔍 بحث تصنيف", callback_data="search_edit_cat"),
+        InlineKeyboardButton("➕ تصنيف جديد", callback_data="add_new_edit_cat")
+    ])
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data=f"edit_fatwa_{context.user_data.get('edit_fatwa_id')}")])
+    
     msg = "🏷️ اختر التصنيف الجديد:"
     if update.callback_query: await update.callback_query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
     else: await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
@@ -847,8 +991,30 @@ async def handle_receive_new_cat(update: Update, context: ContextTypes.DEFAULT_T
     name = update.message.text.strip(); slot = context.user_data.get('edit_taxonomy_slot', 1)
     cat_type = "fiqh" if slot == 1 else "topic"; cat_id = db.add_category(name, category_type=cat_type)
     fatwa_id = context.user_data.get('edit_fatwa_id'); fatwa = db.get_fatwa(fatwa_id); cls = fatwa.get('classifications', [])
+    append_mode = context.user_data.get('edit_append_mode', False)
+    
+    if not append_mode:
+        cls = [c for c in cls if c['slot_index'] != slot]
+    
     cls.append({'category_id': cat_id, 'topic_ids': [], 'slot_index': slot})
-    db.update_fatwa(fatwa_id, {'classifications': cls}); return await show_edit_topics_step(update, context, cat_id=cat_id)
+    db.update_fatwa(fatwa_id, {'classifications': cls})
+    context.user_data['edit_topic_cat_id'] = cat_id
+    return await show_edit_topics_step(update, context, cat_id=cat_id)
+
+async def handle_receive_new_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    name = update.message.text.strip(); cat_id = context.user_data.get('edit_topic_cat_id')
+    if not cat_id: return STATE_EDIT_TOPIC
+    topic_id = db.add_topic(name, cat_id)
+    if topic_id:
+        fatwa_id = context.user_data.get('edit_fatwa_id'); slot = context.user_data.get('edit_taxonomy_slot', 1)
+        fatwa = db.get_fatwa(fatwa_id); cls = fatwa.get('classifications', [])
+        for c in cls:
+            if c['slot_index'] == slot and c['category_id'] == cat_id:
+                tids = c.setdefault('topic_ids', [])
+                if topic_id not in tids: tids.append(topic_id)
+                break
+        db.update_fatwa(fatwa_id, {'classifications': cls})
+    return await show_edit_topics_step(update, context, cat_id=cat_id)
 
 add_fatwa_conv = ConversationHandler(
     entry_points=[CallbackQueryHandler(start_add_fatwa, pattern='^add_fatwa$')],
@@ -878,7 +1044,9 @@ edit_conv = ConversationHandler(
         STATE_EDIT_CATEGORY: [CallbackQueryHandler(handle_edit_category_selection)],
         STATE_EDIT_TOPIC: [CallbackQueryHandler(handle_edit_topic_selection)],
         STATE_EDIT_CAT_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_edit_cat_search)],
-        STATE_EDIT_NEW_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_receive_new_cat)]
+        STATE_EDIT_NEW_CAT: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_receive_new_cat)],
+        STATE_EDIT_TOP_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_edit_topic_search)],
+        STATE_EDIT_NEW_TOP: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_receive_new_topic)]
     },
     fallbacks=[CallbackQueryHandler(cancel_operation, pattern='^cancel$'), CommandHandler('cancel', cancel_operation)]
 )

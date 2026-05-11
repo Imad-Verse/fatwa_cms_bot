@@ -122,15 +122,19 @@ async def _get_user_channels(
 
     user_channels: List[Dict] = []
 
-    for ch in all_channels:
+    async def check_channel(ch):
         chat_id = ch["chat_id"]
         try:
             member = await context.bot.get_chat_member(chat_id, user_id)
             if member.status in (ChatMember.ADMINISTRATOR, ChatMember.OWNER):
-                user_channels.append(ch)
+                return ch
         except Exception as e:
             logger.debug(f"Could not check user {user_id} in chat {chat_id}: {e}")
-            continue
+        return None
+
+    # تنفيذ الطلبات بالتوازي لتجنب التجمد
+    results = await asyncio.gather(*(check_channel(ch) for ch in all_channels))
+    user_channels = [r for r in results if r is not None]
 
     # ترتيب (قنوات أولاً ثم مجموعات)
     user_channels.sort(key=lambda ch: (0 if ch.get("type") == "channel" else 1, ch.get("title", "")))

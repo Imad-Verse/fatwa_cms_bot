@@ -869,36 +869,28 @@ def _podcast_inline_keyboard() -> InlineKeyboardMarkup:
 
 async def _send_podcast_to_user(context: ContextTypes.DEFAULT_TYPE, user_id: int, message, broadcast_text: str, reply_markup: InlineKeyboardMarkup):
     if message.text:
-        await context.bot.send_message(chat_id=user_id, text=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_message(chat_id=user_id, text=broadcast_text, reply_markup=reply_markup)
 
     if message.photo:
-        await context.bot.send_photo(chat_id=user_id, photo=message.photo[-1].file_id, caption=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_photo(chat_id=user_id, photo=message.photo[-1].file_id, caption=broadcast_text, reply_markup=reply_markup)
     if message.video:
-        await context.bot.send_video(chat_id=user_id, video=message.video.file_id, caption=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_video(chat_id=user_id, video=message.video.file_id, caption=broadcast_text, reply_markup=reply_markup)
     if message.voice:
-        await context.bot.send_voice(chat_id=user_id, voice=message.voice.file_id, caption=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_voice(chat_id=user_id, voice=message.voice.file_id, caption=broadcast_text, reply_markup=reply_markup)
     if message.audio:
-        await context.bot.send_audio(chat_id=user_id, audio=message.audio.file_id, caption=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_audio(chat_id=user_id, audio=message.audio.file_id, caption=broadcast_text, reply_markup=reply_markup)
     if message.document:
-        await context.bot.send_document(chat_id=user_id, document=message.document.file_id, caption=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_document(chat_id=user_id, document=message.document.file_id, caption=broadcast_text, reply_markup=reply_markup)
     if message.animation:
-        await context.bot.send_animation(chat_id=user_id, animation=message.animation.file_id, caption=broadcast_text, reply_markup=reply_markup)
-        return
+        return await context.bot.send_animation(chat_id=user_id, animation=message.animation.file_id, caption=broadcast_text, reply_markup=reply_markup)
     if message.video_note:
         # video_note لا يدعم caption، نرسل النص كرسالة منفصلة
         await context.bot.send_message(chat_id=user_id, text=broadcast_text, reply_markup=reply_markup)
-        await context.bot.send_video_note(chat_id=user_id, video_note=message.video_note.file_id)
-        return
+        return await context.bot.send_video_note(chat_id=user_id, video_note=message.video_note.file_id)
 
     # fallback: أرسل النص النموذجي مع الأزرار، ثم انسخ الرسالة كما هي
     await context.bot.send_message(chat_id=user_id, text=broadcast_text, reply_markup=reply_markup)
-    await context.bot.copy_message(
+    return await context.bot.copy_message(
         chat_id=user_id,
         from_chat_id=message.chat_id,
         message_id=message.message_id
@@ -955,13 +947,20 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
     canceled = False
     podcast_markup = _podcast_inline_keyboard()
     broadcast_text = _build_podcast_template(message.text or message.caption or "")
+    sent_messages = []
 
     for user_id in users:
         if store.get(broadcast_id, {}).get('cancel'):
             canceled = True
             break
         try:
-            await _send_podcast_to_user(context, user_id, message, broadcast_text, podcast_markup)
+            msg = await _send_podcast_to_user(context, user_id, message, broadcast_text, podcast_markup)
+            if msg:
+                # copy_message returns a MessageId object which has message_id,
+                # send_message returns a Message object which has message_id
+                msg_id = getattr(msg, 'message_id', None)
+                if msg_id:
+                    sent_messages.append({"chat_id": user_id, "message_id": msg_id})
             report['success'] += 1
         except Exception as e:
             report['fail'] += 1
@@ -970,6 +969,9 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
                 bot_db.set_user_blocked(user_id, True)
 
     store.pop(broadcast_id, None)
+    
+    # حفظ الرسائل المرسلة لتعديلها أو حذفها
+    context.user_data["podcast_sent_messages"] = sent_messages
 
     status_line = "🛑 تم إيقاف الإرسال بواسطة المسؤول." if canceled else "✅ اكتملت عملية الإرسال بنجاح."
     summary = (
@@ -979,7 +981,15 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
         f"👥 إجمالي المستهدفين: {total_targets}"
     )
 
-    await update.message.reply_text(summary)
+    keyboard = []
+    if sent_messages:
+        keyboard.append([
+            InlineKeyboardButton("✏️ تعديل الإذاعة", callback_data="podcast_edit_bc"),
+            InlineKeyboardButton("🗑️ حذف الإذاعة", callback_data="podcast_del_bc")
+        ])
+    keyboard.append([InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")])
+
+    await update.message.reply_text(summary, reply_markup=InlineKeyboardMarkup(keyboard))
     return ConversationHandler.END
 
 
@@ -995,6 +1005,93 @@ async def cancel_podcast_broadcast(update: Update, context: ContextTypes.DEFAULT
         await query.message.reply_text("🛑 تم طلب إيقاف العملية، قد يستمر الإرسال لثوانٍ إضافية.")
     else:
         await query.answer("⚠️ العملية منتهية بالفعل.", show_alert=True)
+
+async def start_edit_podcast_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء تعديل الإذاعة"""
+    query = update.callback_query
+    await query.answer()
+    
+    sent_messages = context.user_data.get("podcast_sent_messages")
+    if not sent_messages:
+        await query.answer("⚠️ لا توجد رسائل لتعديلها.", show_alert=True)
+        return ConversationHandler.END
+        
+    await query.edit_message_text(
+        "✏️ **تعديل الإذاعة**\n\nأرسل النص الجديد الذي تريد استبداله بالرسائل المرسلة:\n\n*(ملاحظة: يمكنك إرسال نص فقط للاستبدال)*",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="admin_panel")]]),
+        parse_mode="Markdown"
+    )
+    return STATE_PODCAST_EDIT
+
+async def receive_podcast_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استلام النص الجديد وتعديل الرسائل"""
+    message = update.message
+    if not message.text:
+        await message.reply_text("⚠️ يرجى إرسال نص فقط للتعديل.")
+        return STATE_PODCAST_EDIT
+        
+    sent_messages = context.user_data.get("podcast_sent_messages", [])
+    if not sent_messages:
+        await message.reply_text("⚠️ لم يتم العثور على رسائل لتعديلها.")
+        return ConversationHandler.END
+        
+    new_text = _build_podcast_template(message.text)
+    podcast_markup = _podcast_inline_keyboard()
+    
+    msg = await message.reply_text("⏳ جاري تعديل الرسائل...")
+    success = 0
+    fail = 0
+    
+    for sent in sent_messages:
+        try:
+            await context.bot.edit_message_text(
+                chat_id=sent["chat_id"],
+                message_id=sent["message_id"],
+                text=new_text,
+                reply_markup=podcast_markup
+            )
+            success += 1
+        except Exception as e:
+            fail += 1
+            
+    await msg.edit_text(
+        f"✅ تم تعديل الرسائل بنجاح.\n\nنجاح: {success}\nفشل: {fail}",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]])
+    )
+    return ConversationHandler.END
+
+async def delete_podcast_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """حذف الإذاعة المرسلة"""
+    query = update.callback_query
+    await query.answer()
+    
+    sent_messages = context.user_data.get("podcast_sent_messages", [])
+    if not sent_messages:
+        await query.answer("⚠️ لا توجد رسائل لحذفها.", show_alert=True)
+        return ConversationHandler.END
+        
+    await query.edit_message_text("⏳ جاري حذف الرسائل...")
+    success = 0
+    fail = 0
+    
+    for sent in sent_messages:
+        try:
+            await context.bot.delete_message(
+                chat_id=sent["chat_id"],
+                message_id=sent["message_id"]
+            )
+            success += 1
+        except Exception as e:
+            fail += 1
+            
+    # تنظيف
+    context.user_data.pop("podcast_sent_messages", None)
+    
+    await query.edit_message_text(
+        f"🗑️ تم حذف الرسائل بنجاح.\n\nنجاح: {success}\nفشل: {fail}",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]])
+    )
+    return ConversationHandler.END
 
 
 # ==============================================================================
@@ -2121,10 +2218,13 @@ scholar_conv = ConversationHandler(
 
 podcast_conv = ConversationHandler(
     entry_points=[
-        CallbackQueryHandler(podcast_panel, pattern='^podcast_panel$')
+        CallbackQueryHandler(podcast_panel, pattern='^podcast_panel$'),
+        CallbackQueryHandler(start_edit_podcast_broadcast, pattern='^podcast_edit_bc$'),
+        CallbackQueryHandler(delete_podcast_broadcast, pattern='^podcast_del_bc$')
     ],
     states={
-        STATE_PODCAST_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_podcast_content)]
+        STATE_PODCAST_CONTENT: [MessageHandler(filters.ALL & ~filters.COMMAND, receive_podcast_content)],
+        STATE_PODCAST_EDIT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_podcast_edit)]
     },
     fallbacks=[CallbackQueryHandler(admin_panel, pattern='^admin_panel$')]
 )

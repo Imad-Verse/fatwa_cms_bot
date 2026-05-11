@@ -131,6 +131,7 @@ for directory in [BACKUP_DIR, TEMP_DIR, LOGS_DIR]:
 
     # حالات البودكاست
     STATE_PODCAST_CONTENT,
+    STATE_PODCAST_EDIT,
 
     # حالات إعدادات الجدولة
     STATE_SETTINGS_DAILY_TIME,
@@ -138,4 +139,4 @@ for directory in [BACKUP_DIR, TEMP_DIR, LOGS_DIR]:
     STATE_SMART_SEARCH,
     STATE_SMART_SEARCH_SCHOLARS,
     STATE_SMART_SEARCH_QUERY,
-) = range(58)
+) = range(59)
