@@ -42,7 +42,7 @@ BOT_DB_NAME = "bot_internal.db"
 DB_PATH = os.path.join(DATA_DIR, FATWAS_DB_NAME)
 BOT_DB_PATH = os.path.join(DATA_DIR, BOT_DB_NAME)
 LOGS_DIR = os.path.join(BASE_DIR, "logs")
-BACKUP_DIR = os.path.join(BASE_DIR, "backups")
+BACKUP_DIR = os.path.join(DATA_DIR, "backups")
 TEMP_DIR = os.path.join(BASE_DIR, "temp")
 
 # إنشاء المجلدات إذا لم تكن موجودة

@@ -1,4 +1,3 @@
-data/
 venv/
 .venv/
 logs/
@@ -8,3 +7,8 @@ temp/
 *.pyc
 __pycache__/
 .env
+
+# Data and Databases
+data/backups/
+data/bot_internal.db
+# Note: fatwa_bot.db is tracked and NOT ignored

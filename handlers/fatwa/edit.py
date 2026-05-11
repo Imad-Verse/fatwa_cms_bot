@@ -78,7 +78,7 @@ async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fatwa_id = context.user_data.get('edit_fatwa_id')
 
     if data == "cancel_edit":
-        from handlers.fatwa_view import view_fatwa
+        from .view import view_fatwa
         await view_fatwa(update, context, fatwa_id=fatwa_id); return ConversationHandler.END
     if data.startswith("edit_fatwa_"): return await start_edit_fatwa(update, context, fatwa_id=int(data.split('_')[-1]))
     if data.startswith("edit_sch_page_"): return await _show_edit_scholar_picker(update, context, page=int(data.split('_')[-1]))

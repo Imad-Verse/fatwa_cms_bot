@@ -54,7 +54,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     fatwa = await fatwa_db.get_fatwa(fatwa_number)
                 if not fatwa:
                     raise ValueError("Fatwa not found")
-                from handlers.fatwa_view import send_fatwa_message
+                from handlers.fatwa.view import send_fatwa_message
                 await send_fatwa_message(update, context, fatwa['id'])
                 return ConversationHandler.END
             except Exception as e:

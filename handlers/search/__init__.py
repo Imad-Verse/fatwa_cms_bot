@@ -73,6 +73,8 @@ async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_
     user_query = update.message.text
     status_msg = await update.message.reply_text("⏳ جاري تحليل السؤال دلالياً...")
     
+    from .logic import _generate_ai_answer
+    
     terms, error = await _request_ai_query_terms(user_query)
     if error:
         await status_msg.edit_text(f"⚠️ حدث خطأ أثناء تحليل السؤال ({error}). جاري البحث المباشر...")
@@ -90,8 +92,28 @@ async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_
     }
     
     results, total = await _fetch_ai_text_fatwas(terms, user_query, public_only, limit=5, offset=0, max_total=10)
+    
+    if not results:
+        await status_msg.edit_text("❌ عذراً، لم أجد أي فتاوى متعلقة بهذا السؤال في قاعدة البيانات.")
+        return ConversationHandler.END
+
+    await status_msg.edit_text("🧪 جاري صياغة الإجابة بناءً على الفتاوى المستخرجة...")
+    ai_answer = await _generate_ai_answer(user_query, results)
+    
     await status_msg.delete()
-    await display_search_results(update, context, results, "نتائج البحث الذكي", total, is_callback=False, back_callback="search_ai")
+    
+    if ai_answer:
+        # تأكد من أن النص لا يتجاوز حد تليجرام
+        header = "🤖 **الإجابة المستخلصة بالذكاء الاصطناعي:**\n\n"
+        footer = "\n\n📚 **المصادر المعتمدة من قاعدة البيانات:**"
+        full_text = f"{header}{ai_answer}{footer}"
+        
+        if len(full_text) > 4000:
+            full_text = full_text[:3900] + "...\n(تم اختصار النص لطوله)" + footer
+            
+        await update.message.reply_text(full_text, parse_mode='Markdown')
+    
+    await display_search_results(update, context, results, "الفتاوى المستند إليها", total, is_callback=False, back_callback="search_ai")
     return ConversationHandler.END
 
 async def search_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -178,15 +200,15 @@ async def search_popular(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # --- Proxies ---
 
 async def view_fatwa_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from handlers.fatwa_view import view_fatwa
+    from handlers.fatwa.view import view_fatwa
     return await view_fatwa(update, context)
 
 async def show_random_fatwa_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from handlers.fatwa_view import show_random_fatwa
+    from handlers.fatwa.view import show_random_fatwa
     return await show_random_fatwa(update, context)
 
 async def continue_reading_fatwa_proxy(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    from handlers.fatwa_view import continue_reading_fatwa
+    from handlers.fatwa.view import continue_reading_fatwa
     return await continue_reading_fatwa(update, context)
 
 from handlers.general import cancel_operation, back_to_main

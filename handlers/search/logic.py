@@ -585,6 +585,53 @@ async def _request_ai_query_terms(problem_text: str) -> tuple[list[str], str | N
         logger.error(f"AI search term extraction failed: {e}")
         return [], "request_failed"
 
+async def _generate_ai_answer(user_query: str, fatwas: list[dict]) -> str | None:
+    """صياغة إجابة ملخصة بناءً على نتائج البحث المستخرجة (RAG)."""
+    if not GROQ_API_KEY: return None
+    if not fatwas: return "لم يتم العثور على فتاوى مباشرة في قاعدة البيانات للإجابة على هذا السؤال."
+
+    from groq import AsyncGroq
+    client = AsyncGroq(api_key=GROQ_API_KEY)
+
+    # تجهيز السياق من الفتاوى
+    context_parts = []
+    for f in fatwas[:5]:
+        f_num = f.get('fatwa_number', f.get('id', '؟'))
+        f_scholar = f.get('scholar_name', 'عالم')
+        f_question = f.get('question', '')
+        f_answer = f.get('answer', '')
+        context_parts.append(f"الفتوى رقم {f_num} (الشيخ {f_scholar}):\nالسؤال: {f_question}\nالجواب: {f_answer}\n---")
+    
+    context_text = "\n".join(context_parts)
+    
+    system_prompt = (
+        "أنت مساعد شرعي ذكي. مهمتك هي الإجابة على سؤال المستخدم بناءً **فقط** على الفتاوى المقدمة في السياق أدناه.\n"
+        "قواعد الإجابة:\n"
+        "1. ابدأ الإجابة بملخص فقهي مباشر.\n"
+        "2. يجب أن تستند في كل معلومة تذكرها إلى إحدى الفتاوى المقدمة.\n"
+        "3. اذكر رقم الفتوى واسم الشيخ عند الاستشهاد (مثال: 'حسب الفتوى رقم 123 للشيخ ابن باز...').\n"
+        "4. إذا لم تحتوي الفتاوى المقدمة على إجابة للسؤال، فقل بصراحة: 'عذراً، لم أجد إجابة مباشرة في قاعدة بيانات الفتاوى لهذا السؤال'.\n"
+        "5. لا تستخدم معلوماتك الخارجية التي لم ترد في السياق.\n"
+        "6. اجعل لغة الإجابة رصينة ومناسبة للمواضيع الشرعية."
+    )
+    
+    user_prompt = f"سؤال المستخدم: {user_query}\n\nالسياق (الفتاوى المتاحة):\n{context_text}"
+    
+    try:
+        completion = await client.chat.completions.create(
+            model=GROQ_MODEL or "llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.2,
+            max_tokens=1200
+        )
+        return completion.choices[0].message.content
+    except Exception as e:
+        logger.error(f"AI answer generation failed: {e}")
+        return None
+
 async def _fetch_ai_text_fatwas(query_terms, user_query, public_only, limit, offset, max_total=None, include_debug=False):
     return await _fetch_contextual_text_fatwas(base_terms=query_terms or [], user_query=user_query, public_only=public_only, limit=limit, offset=offset, strict=True, max_total=max_total, include_debug=include_debug)
 
