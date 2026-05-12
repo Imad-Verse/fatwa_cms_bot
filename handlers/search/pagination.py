@@ -139,11 +139,11 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
         db = FatwaDatabaseManager()
         results, total_count = await db.get_all_fatwas(status='published' if params['public'] else None, limit=limit, offset=offset)
         title = "أحدث الفتاوى"
-        back_callback = "browse_fatwas"
+        back_callback = "back_main"
     elif stype == 'popular':
         results, total_count = await _fetch_popular_fatwas(params['public'], limit=limit, offset=offset, max_total=params.get('cap'))
         title = "الفتاوى الأكثر مشاهدة"
-        back_callback = "browse_fatwas"
+        back_callback = "back_main"
     elif stype == 'ai':
         results, total_count = await _fetch_ai_text_fatwas(params.get('terms'), params.get('user_query'), params.get('public', True), limit, offset, max_total=params.get('cap'))
         title = "نتائج البحث الذكي"

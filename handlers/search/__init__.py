@@ -202,7 +202,7 @@ async def search_latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'params': {'public': public_only, 'cap': LATEST_LIMIT}
     }
     results, total = await db.get_all_fatwas(status='published' if public_only else None, limit=5, offset=0)
-    await display_search_results(update, context, results, "📅 أحدث الفتاوى", min(total, LATEST_LIMIT), is_callback=True, back_callback="browse_fatwas")
+    await display_search_results(update, context, results, "📅 أحدث الفتاوى", min(total, LATEST_LIMIT), is_callback=True, back_callback="back_main")
     return BotState.STATE_SEARCH
 
 async def search_popular(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -214,7 +214,7 @@ async def search_popular(update: Update, context: ContextTypes.DEFAULT_TYPE):
         'params': {'public': public_only, 'cap': POPULAR_LIMIT}
     }
     results, total = await _fetch_popular_fatwas(public_only, limit=5, offset=0, max_total=POPULAR_LIMIT)
-    await display_search_results(update, context, results, "🔥 الأكثر مشاهدة", total, is_callback=True, back_callback="browse_fatwas")
+    await display_search_results(update, context, results, "🔥 الأكثر مشاهدة", total, is_callback=True, back_callback="back_main")
     return BotState.STATE_SEARCH
 
 # --- Proxies ---
