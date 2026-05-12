@@ -40,7 +40,8 @@ async def show_random_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE):
         fatwa = await db.get_random_fatwa(public_only=public_only)
 
     if not fatwa:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "❌ لا توجد فتاوى متاحة للمطالعة العشوائية حالياً.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("🔙 رجوع للمطالعة", callback_data="browse_fatwas")],
@@ -106,13 +107,14 @@ async def view_fatwa(
         fatwa = await db.get_fatwa(fatwa_id)
 
         if not fatwa:
-            await query.edit_message_text("❌ الفتوى غير موجودة.", reply_markup=back_to_search_keyboard("🔙 رجوع"))
+            await safe_edit_message_text(query, "❌ الفتوى غير موجودة.", reply_markup=back_to_search_keyboard("🔙 رجوع"))
             return
 
         is_admin = await bot_db.is_admin(update.effective_user.id)
         if not is_admin and fatwa.get('status') != 'published':
             back_btn = _build_view_back_button(SimpleNamespace(data=current_view_data), context, fatwa_id=fatwa_id)
-            await query.edit_message_text(
+            await safe_edit_message_text(
+                query,
                 "❌ هذه الفتوى غير منشورة.",
                 reply_markup=InlineKeyboardMarkup([[back_btn]])
             )
@@ -145,7 +147,8 @@ async def view_fatwa(
         )
 
         message_parts = split_long_message(text)
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             message_parts[0],
             reply_markup=reply_markup if len(message_parts) == 1 else None,
             disable_web_page_preview=True
@@ -153,7 +156,8 @@ async def view_fatwa(
 
         for i, part in enumerate(message_parts[1:], 1):
             is_last = (i == len(message_parts) - 1)
-            await query.message.reply_text(
+            await safe_reply_text(
+                query.message,
                 part,
                 reply_markup=reply_markup if is_last else None,
                 disable_web_page_preview=True
@@ -162,10 +166,10 @@ async def view_fatwa(
     except Exception as e:
         logger.error(f"Error viewing fatwa: {e}")
         try:
-            await query.edit_message_text("❌ حدث خطأ أثناء عرض الفتوى.", reply_markup=back_to_main_keyboard())
+            await safe_edit_message_text(query, "❌ حدث خطأ أثناء عرض الفتوى.", reply_markup=back_to_main_keyboard())
         except Exception:
             try:
-                await query.message.reply_text("❌ حدث خطأ أثناء عرض الفتوى.", reply_markup=back_to_main_keyboard())
+                await safe_reply_text(update, "❌ حدث خطأ أثناء عرض الفتوى.", reply_markup=back_to_main_keyboard())
             except Exception:
                 pass
 
@@ -239,12 +243,12 @@ async def send_fatwa_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
     try:
         fatwa = await db.get_fatwa(fatwa_id)
         if not fatwa:
-            await update.message.reply_text("❌ الفتوى غير موجودة.", reply_markup=create_main_keyboard())
+            await safe_reply_text(update, "❌ الفتوى غير موجودة.", reply_markup=create_main_keyboard())
             return
 
         is_admin = await bot_db.is_admin(update.effective_user.id)
         if not is_admin and fatwa.get('status') != 'published':
-            await update.message.reply_text("❌ هذه الفتوى غير منشورة.", reply_markup=create_main_keyboard(is_admin))
+            await safe_reply_text(update, "❌ هذه الفتوى غير منشورة.", reply_markup=create_main_keyboard(is_admin))
             return
 
         await db.increment_views(fatwa_id)
@@ -287,14 +291,15 @@ async def send_fatwa_message(update: Update, context: ContextTypes.DEFAULT_TYPE,
 
         for i, part in enumerate(message_parts):
             is_last = (i == len(message_parts) - 1)
-            await update.message.reply_text(
+            await safe_reply_text(
+                update,
                 part,
                 reply_markup=reply_markup if is_last else None,
                 disable_web_page_preview=True
             )
     except Exception as e:
         logger.error(f"Error sending fatwa message: {e}")
-        await update.message.reply_text("❌ حدث خطأ أثناء عرض الفتوى.", reply_markup=create_main_keyboard())
+        await safe_reply_text(update, "❌ حدث خطأ أثناء عرض الفتوى.", reply_markup=create_main_keyboard())
 
 async def copy_fatwa_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """نسخ الفتوى كاملة مع الروابط داخل النص"""
@@ -311,7 +316,7 @@ async def copy_fatwa_full(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if is_private_chat:
             for part in message_parts:
-                await query.message.reply_text(part)
+                await safe_reply_text(query.message, part)
             await query.answer("📋 تم إرسال نسخة الفتوى")
             return
 

@@ -11,6 +11,10 @@ from telegram.ext import (
 from core.config import BotState
 from core.bot_db import BotDatabaseManager
 from core.database import FatwaDatabaseManager
+from core.utils import (
+    safe_reply_text, safe_edit_message_text,
+    format_fatwa_card
+)
 
 # Import from sub-modules
 from .keyboards import create_search_keyboard, create_browse_keyboard
@@ -55,71 +59,74 @@ bot_db = BotDatabaseManager()
 # --- Main Entry Points ---
 
 async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    if query:
-        await query.answer()
-        await query.edit_message_text("🔎 قائمة البحث:", reply_markup=create_search_keyboard())
-    else:
-        await update.message.reply_text("🔎 قائمة البحث:", reply_markup=create_search_keyboard())
+    text = "🔎 قائمة البحث:"
+    await safe_reply_text(update, text, reply_markup=create_search_keyboard())
     return BotState.STATE_SEARCH
 
 async def search_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🤖 **البحث بالذكاء الاصطناعي**\n\nأرسل سؤالك أو الحالة التي تبحث عنها، وسأقوم باستخراج المصطلحات الفقهية المناسبة والبحث عنها دلالياً:")
+    await safe_edit_message_text(update, "🤖 **البحث بالذكاء الاصطناعي**\n\nأرسل سؤالك أو الحالة التي تبحث عنها، وسأقوم باستخراج المصطلحات الفقهية المناسبة والبحث عنها دلالياً:")
     return BotState.STATE_SEARCH_AI
 
 async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_query = update.message.text
-    status_msg = await update.message.reply_text("⏳ جاري تحليل السؤال دلالياً...")
+    user_query = (update.message.text or "").strip()
+    if not user_query: return ConversationHandler.END
+    
+    status_msg = await safe_reply_text(update, "⏳ جاري تحليل السؤال دلالياً...")
     
     from .logic import _generate_ai_answer
     
-    terms, error = await _request_ai_query_terms(user_query)
-    if error:
-        await status_msg.edit_text(f"⚠️ حدث خطأ أثناء تحليل السؤال ({error}). جاري البحث المباشر...")
-        terms = []
+    try:
+        terms, error = await _request_ai_query_terms(user_query)
+        if error:
+            await safe_edit_message_text(status_msg, f"⚠️ حدث خطأ أثناء تحليل السؤال ({error}). جاري البحث المباشر...")
+            terms = []
 
-    public_only = not await bot_db.is_admin(update.effective_user.id)
-    context.user_data['current_search_state'] = {
-        'type': 'ai',
-        'params': {
-            'terms': terms,
-            'user_query': user_query,
-            'public': public_only,
-            'cap': 10
+        public_only = not await bot_db.is_admin(update.effective_user.id)
+        context.user_data['current_search_state'] = {
+            'type': 'ai',
+            'params': {
+                'terms': terms,
+                'user_query': user_query,
+                'public': public_only,
+                'cap': 10
+            }
         }
-    }
-    
-    results, total = await _fetch_ai_text_fatwas(terms, user_query, public_only, limit=5, offset=0, max_total=10)
-    
-    if not results:
-        await status_msg.edit_text("❌ عذراً، لم أجد أي فتاوى متعلقة بهذا السؤال في قاعدة البيانات.")
-        return ConversationHandler.END
-
-    await status_msg.edit_text("🧪 جاري صياغة الإجابة بناءً على الفتاوى المستخرجة...")
-    ai_answer = await _generate_ai_answer(user_query, results)
-    
-    await status_msg.delete()
-    
-    if ai_answer:
-        # تأكد من أن النص لا يتجاوز حد تليجرام
-        header = "🤖 **الإجابة المستخلصة بالذكاء الاصطناعي:**\n\n"
-        footer = "\n\n📚 **المصادر المعتمدة من قاعدة البيانات:**"
-        full_text = f"{header}{ai_answer}{footer}"
         
-        if len(full_text) > 4000:
-            full_text = full_text[:3900] + "...\n(تم اختصار النص لطوله)" + footer
+        results, total = await _fetch_ai_text_fatwas(terms, user_query, public_only, limit=5, offset=0, max_total=10)
+        
+        if not results:
+            await safe_edit_message_text(status_msg, "❌ عذراً، لم أجد أي فتاوى متعلقة بهذا السؤال في قاعدة البيانات.")
+            return ConversationHandler.END
+
+        await safe_edit_message_text(status_msg, "🧪 جاري صياغة الإجابة بناءً على الفتاوى المستخرجة...")
+        ai_answer = await _generate_ai_answer(user_query, results)
+        
+        # Try to delete status message safely
+        try:
+            if hasattr(status_msg, 'delete'): await status_msg.delete()
+            elif isinstance(status_msg, Update) and status_msg.effective_message:
+                await status_msg.effective_message.delete()
+        except: pass
+        
+        if ai_answer:
+            header = "🤖 **الإجابة المستخلصة بالذكاء الاصطناعي:**\n\n"
+            footer = "\n\n📚 **المصادر المعتمدة من قاعدة البيانات:**"
+            full_text = f"{header}{ai_answer}{footer}"
             
-        await update.message.reply_text(full_text, parse_mode='Markdown')
+            if len(full_text) > 4000:
+                full_text = full_text[:3900] + "...\n(تم اختصار النص لطوله)" + footer
+                
+            await safe_reply_text(update, full_text, parse_mode='Markdown')
+        
+        await display_search_results(update, context, results, "الفتاوى المستند إليها", total, is_callback=False, back_callback="search_ai")
+    except Exception as e:
+        logger.error(f"Error in perform_search_ai_query: {e}")
+        await safe_reply_text(update, "❌ عذراً، حدث خطأ فني أثناء معالجة طلبك.")
     
-    await display_search_results(update, context, results, "الفتاوى المستند إليها", total, is_callback=False, back_callback="search_ai")
     return ConversationHandler.END
 
 async def search_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔍 **البحث الشامل**\n\nأرسل كلمة أو جملة للبحث عنها في العناوين والأسئلة والأجوبة:")
+    await safe_edit_message_text(update, "🔍 **البحث الشامل**\n\nأرسل كلمة أو جملة للبحث عنها في العناوين والأسئلة والأجوبة:")
     return BotState.STATE_SEARCH_ALL
 
 async def perform_search_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -134,32 +141,27 @@ async def perform_search_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
     return ConversationHandler.END
 
 async def search_number_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🔢 أرسل رقم الفتوى للبحث عنها مباشرة:")
+    await safe_edit_message_text(update, "🔢 أرسل رقم الفتوى للبحث عنها مباشرة:")
     return BotState.STATE_SEARCH_NUMBER
 
 async def perform_search_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
     num_str = update.message.text.strip()
     if not num_str.isdigit():
-        await update.message.reply_text("⚠️ يرجى إرسال رقم صحيح.")
+        await safe_reply_text(update, "⚠️ يرجى إرسال رقم صحيح.")
         return BotState.STATE_SEARCH_NUMBER
     
     fatwa = await db.get_fatwa_by_number(int(num_str))
     if not fatwa:
-        await update.message.reply_text(f"❌ لم يتم العثور على الفتوى رقم {num_str}")
+        await safe_reply_text(update, f"❌ لم يتم العثور على الفتوى رقم {num_str}")
         return ConversationHandler.END
 
-    from core.utils import format_fatwa_card
     from core.keyboards import create_fatwa_view_keyboard
     is_admin = await bot_db.is_admin(update.effective_user.id)
-    await update.message.reply_text(format_fatwa_card(fatwa), reply_markup=create_fatwa_view_keyboard(fatwa, is_admin, False), parse_mode='Markdown')
+    await safe_reply_text(update, format_fatwa_card(fatwa), reply_markup=create_fatwa_view_keyboard(fatwa, is_admin, False), parse_mode='Markdown')
     return ConversationHandler.END
 
 async def search_title_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    await query.edit_message_text("🏷️ أرسل عنوان الفتوى أو كلمات منه:")
+    await safe_edit_message_text(update, "🏷️ أرسل عنوان الفتوى أو كلمات منه:")
     return BotState.STATE_SEARCH_TITLE
 
 async def perform_search_title(update: Update, context: ContextTypes.DEFAULT_TYPE):

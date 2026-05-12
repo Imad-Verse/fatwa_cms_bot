@@ -4,7 +4,10 @@ from telegram.ext import ContextTypes, ConversationHandler
 from core.bot_db import BotDatabaseManager
 from core.database import FatwaDatabaseManager
 from core.config import BotState
-from core.utils import callback_guard
+from core.utils import (
+    callback_guard, 
+    safe_reply_text, safe_edit_message_text
+)
 from .keyboards import _build_smart_search_keyboard
 from .pagination import display_search_results
 from .logic import _fetch_smart_fatwas
@@ -30,14 +33,14 @@ def _reset_smart_state(context: ContextTypes.DEFAULT_TYPE):
 async def _render_smart_menu(query, context: ContextTypes.DEFAULT_TYPE):
     state = _get_smart_state(context)
     text = "🎛️ **البحث المتقدم**\n\nقم باختيار طريقة البحث بالضغط على الفلاتر التالية:"
-    await query.edit_message_text(text, reply_markup=_build_smart_search_keyboard(state), parse_mode='Markdown')
+    await safe_edit_message_text(query, text, reply_markup=_build_smart_search_keyboard(state), parse_mode='Markdown')
 
 @callback_guard(1.0)
 async def start_smart_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     await _render_smart_menu(query, context)
-    return STATE_SEARCH_SMART
+    return BotState.STATE_SEARCH_SMART
 
 async def smart_toggle_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -69,7 +72,7 @@ async def smart_search_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("⚠️ يرجى اختيار فلتر واحد على الأقل.")
         return BotState.STATE_SEARCH_SMART
     
-    await query.edit_message_text("⌨️ يرجى إرسال كلمة البحث:")
+    await safe_edit_message_text(update, "⌨️ يرجى إرسال كلمة البحث:")
     return BotState.STATE_SMART_SEARCH_QUERY
 
 async def smart_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -77,7 +80,7 @@ async def smart_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     _reset_smart_state(context)
     from .keyboards import create_search_keyboard
-    await query.edit_message_text("🔎 قائمة البحث:", reply_markup=create_search_keyboard())
+    await safe_edit_message_text(update, "🔎 قائمة البحث:", reply_markup=create_search_keyboard())
     return ConversationHandler.END
 
 async def show_smart_scholars_list(update_obj, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
@@ -103,10 +106,7 @@ async def show_smart_scholars_list(update_obj, context: ContextTypes.DEFAULT_TYP
     keyboard.append([InlineKeyboardButton("🔙 إنهاء الاختيار", callback_data="search_smart")])
     
     text = "👤 **اختر العلماء للبحث في فتاواهم:**"
-    if update_obj.message:
-        await update_obj.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else:
-        await update_obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_smart_scholar_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

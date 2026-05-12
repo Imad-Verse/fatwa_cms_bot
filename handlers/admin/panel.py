@@ -31,7 +31,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import OWNER_ID, BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 
@@ -101,7 +102,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text, markup = await _build_admin_panel_payload()
-    await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+    await safe_edit_message_text(query, text, reply_markup=markup, parse_mode='Markdown')
 
 
 async def toggle_maintenance_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,7 +123,7 @@ async def toggle_maintenance_mode(update: Update, context: ContextTypes.DEFAULT_
         await query.answer("🔴 تم إيقاف وضع الصيانة")
 
     text, markup = await _build_admin_panel_payload()
-    await query.edit_message_text(text, reply_markup=markup, parse_mode='Markdown')
+    await safe_edit_message_text(query, text, reply_markup=markup, parse_mode='Markdown')
 
 
 async def show_admin_drafts(update: Update, context: ContextTypes.DEFAULT_TYPE, page: int | None = None):
@@ -147,25 +148,19 @@ async def show_admin_drafts(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     offset = page * ITEMS_PER_PAGE
 
     try:
-        # get_all_fatwas might return a tuple or list depending on implementation
-        result = await db.get_all_fatwas(status='draft', limit=ITEMS_PER_PAGE, offset=offset)
-        if isinstance(result, tuple) and len(result) == 2:
-            drafts, total_drafts = result
-        else:
-            drafts = result
-            total_drafts = await db.get_fatwas_count(status='draft')
+        drafts, total_drafts = await db.get_all_fatwas(status='draft', limit=ITEMS_PER_PAGE, offset=offset)
     except Exception as e:
         logger.error(f"Error fetching drafts: {e}")
         error_msg = "❌ حدث خطأ أثناء تحميل المسودات."
-        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
-        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await safe_reply_text(update, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
         return
 
     if not drafts and page == 0:
         text = "✅ لا توجد مسودات حالياً."
         keyboard = [[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]
-        if query: await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        else: await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        if query: await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        else: await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     text = f"📝 **المسودات** (صفحة {page + 1})\nإجمالي المسودات: {total_drafts}\n\n"
@@ -196,9 +191,9 @@ async def show_admin_drafts(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     keyboard.append([InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")])
 
     if query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def show_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض الفتاوى المكررة"""
@@ -221,22 +216,19 @@ async def show_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     offset = page * ITEMS_PER_PAGE
 
     try:
-        duplicates, total_count = await asyncio.gather(
-            db.get_duplicate_fatwas(ITEMS_PER_PAGE, offset),
-            db.get_duplicate_count(),
-        )
+        duplicates, total_count = await db.get_duplicate_fatwas(ITEMS_PER_PAGE, offset)
     except Exception:
         logger.exception("Failed to load duplicate fatwas")
         error_msg = "❌ تعذر تحميل قائمة الفتاوى المكررة حالياً."
-        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
-        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await safe_reply_text(update, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
         return
 
     if not duplicates and page == 0:
         text = "✅ لا توجد فتاوى مكررة حالياً."
         keyboard = [[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]
-        if query: await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        else: await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        if query: await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
+        else: await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     text = f"🔄 **الفتاوى المكررة (نفس الجواب)** (صفحة {page + 1})\nإجمالي المكرر: {total_count}\n\n"
@@ -267,9 +259,9 @@ async def show_duplicates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")])
 
     if query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 # ==============================================================================
 # 👥 القسم 2: إدارة المسؤولين (Admins)

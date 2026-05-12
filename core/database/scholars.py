@@ -8,8 +8,8 @@ class ScholarsMixin:
     """Methods for Scholar management (Async)."""
 
     async def _get_or_create_scholar_id(self, cursor, scholar_name: str) -> Optional[int]:
-        """Helper to get or create a scholar ID by name."""
-        await cursor.execute("SELECT id FROM scholars WHERE name = ?", (scholar_name,))
+        """Helper to get or create a scholar ID by name (with normalization)."""
+        await cursor.execute("SELECT id FROM scholars WHERE NORMALIZE_TEXT(name) = NORMALIZE_TEXT(?)", (scholar_name,))
         row = await cursor.fetchone()
         if row:
             return row["id"]
@@ -56,6 +56,7 @@ class ScholarsMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_count)
 
+    @cached_async(ttl=600)
     async def get_scholars_with_ids(self, limit: int = None, offset: int = 0, search_query: str = None) -> List[Dict]:
         """Retrieve scholars with detailed info from scholars table."""
         async def _get():

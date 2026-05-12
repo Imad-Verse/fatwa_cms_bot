@@ -12,6 +12,7 @@ from core.utils import (
     split_long_message,
     escape_markdown,
     safe_reply_text,
+    safe_edit_message_text,
     is_valid_url,
     contains_url,
 )
@@ -50,14 +51,14 @@ async def start_add_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _set_add_step(context, "title")
     msg = "📝 **إضافة فتوى جديدة**\n\n📌 أرسل **عنوان الفتوى**:"
     markup = _add_flow_nav_keyboard(include_back_step=False)
-    if query: await query.edit_message_text(msg, reply_markup=markup, parse_mode='Markdown')
-    else: await update.message.reply_text(msg, reply_markup=markup, parse_mode='Markdown')
+    if query: await safe_edit_message_text(query, msg, reply_markup=markup, parse_mode='Markdown')
+    else: await safe_reply_text(update, msg, reply_markup=markup, parse_mode='Markdown')
     return BotState.STATE_TITLE
 
 async def receive_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if contains_url(text):
-        await update.message.reply_text("⚠️ العناوين لا تقبل الروابط. الرجاء إرسال نص العنوان فقط.")
+        await safe_reply_text(update, "⚠️ العناوين لا تقبل الروابط. الرجاء إرسال نص العنوان فقط.")
         return BotState.STATE_TITLE
 
     context.user_data['new_fatwa'] = {'title': text}
@@ -99,10 +100,10 @@ async def handle_scholar_selection(update: Update, context: ContextTypes.DEFAULT
     if data == "cancel": return await cancel_operation(update, context)
     if data == "back_main": return await back_to_main(update, context)
     if data == "new_scholar":
-        await query.edit_message_text("👤 أرسل اسم العالم الجديد:", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
+        await safe_edit_message_text(query, "👤 أرسل اسم العالم الجديد:", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
         return BotState.STATE_SCHOLAR
     elif data == "search_scholar_add":
-        await query.edit_message_text("🔍 أرسل اسم العالم للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="scholar_search_cancel")], [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]))
+        await safe_edit_message_text(query, "🔍 أرسل اسم العالم للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="scholar_search_cancel")], [InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]))
         return BotState.STATE_ADD_FATWA_SCHOLAR_SEARCH
     elif data == "scholar_search_cancel":
         context.user_data.pop('scholar_search_query', None)
@@ -116,7 +117,7 @@ async def handle_scholar_selection(update: Update, context: ContextTypes.DEFAULT
         scholar_name = scholar_data['name'] if scholar_data else "Unknown Scholar"
         context.user_data['new_fatwa']['scholar_name'] = scholar_name
         _set_add_step(context, "question")
-        await query.edit_message_text(f"✅ تم اختيار: {escape_markdown(scholar_name)}\n\n❓ **أرسل نص السؤال**:", reply_markup=_add_flow_nav_keyboard(include_back_step=True), parse_mode='Markdown')
+        await safe_edit_message_text(query, f"✅ تم اختيار: {escape_markdown(scholar_name)}\n\n❓ **أرسل نص السؤال**:", reply_markup=_add_flow_nav_keyboard(include_back_step=True), parse_mode='Markdown')
         return BotState.STATE_QUESTION
 
 async def handle_scholar_search_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -127,27 +128,27 @@ async def handle_scholar_search_add(update: Update, context: ContextTypes.DEFAUL
 async def receive_scholar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['new_fatwa']['scholar_name'] = update.message.text
     _set_add_step(context, "question")
-    await update.message.reply_text("✅ تم حفظ العالم.\n\n❓ **أرسل نص السؤال**:", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
+    await safe_reply_text(update, "✅ تم حفظ العالم.\n\n❓ **أرسل نص السؤال**:", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
     return BotState.STATE_QUESTION
 
 async def receive_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if contains_url(text):
-        await update.message.reply_text("⚠️ السؤال لا تقبل الروابط. الرجاء إرسال نص السؤال فقط.", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
+        await safe_reply_text(update, "⚠️ السؤال لا تقبل الروابط. الرجاء إرسال نص السؤال فقط.", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
         return BotState.STATE_QUESTION
     context.user_data['new_fatwa']['question'] = text
     _set_add_step(context, "answer")
-    await update.message.reply_text("✅ تم حفظ السؤال.\n\n📄 **أرسل نص الفتوى**:", reply_markup=_fatwa_text_nav_keyboard())
+    await safe_reply_text(update, "✅ تم حفظ السؤال.\n\n📄 **أرسل نص الفتوى**:", reply_markup=_fatwa_text_nav_keyboard())
     return BotState.STATE_FATWA_TEXT
 
 async def receive_fatwa_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.message.text:
-        await update.message.reply_text("⚠️ يرجى إرسال نص الفتوى كرسالة نصية.")
+        await safe_reply_text(update, "⚠️ يرجى إرسال نص الفتوى كرسالة نصية.")
         return BotState.STATE_FATWA_TEXT
     
     text = update.message.text
     if contains_url(text):
-        await update.message.reply_text("⚠️ نص الفتوى لا تقبل الروابط. الرجاء إرسال النص فقط.", reply_markup=_fatwa_text_nav_keyboard())
+        await safe_reply_text(update, "⚠️ نص الفتوى لا تقبل الروابط. الرجاء إرسال النص فقط.", reply_markup=_fatwa_text_nav_keyboard())
         return BotState.STATE_FATWA_TEXT
     parts = context.user_data.setdefault('fatwa_text_parts', [])
     parts.append(text)
@@ -174,7 +175,7 @@ async def confirm_fatwa_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         extra_line = f"\n• يوجد أيضاً {extra_count} نتيجة مشابهة." if extra_count else ""
         context.user_data[_PENDING_DUPLICATE_ANSWER_KEY] = answer_text
         context.user_data[_PENDING_DUPLICATE_MATCHES_KEY] = duplicates
-        await query.edit_message_text(f"⚠️ تنبيه: هذه الفتوى موجودة من قبل بنفس النص.\n\n• رقم الفتوى: {fatwa_number}\n• العنوان: {title}{extra_line}\n\nاختر الإجراء:", reply_markup=_duplicate_fatwa_choice_keyboard())
+        await safe_edit_message_text(query, f"⚠️ تنبيه: هذه الفتوى موجودة من قبل بنفس النص.\n\n• رقم الفتوى: {fatwa_number}\n• العنوان: {title}{extra_line}\n\nاختر الإجراء:", reply_markup=_duplicate_fatwa_choice_keyboard())
         return BotState.STATE_FATWA_TEXT
     return await _continue_add_after_fatwa_text(update, context, answer_text)
 
@@ -238,7 +239,7 @@ async def handle_category_selection(update: Update, context: ContextTypes.DEFAUL
     if data == "cancel": return await cancel_operation(update, context)
     if data == "back_main": return await back_to_main(update, context)
     if data == "search_cat_add":
-        await query.edit_message_text("🔍 أرسل اسم التصنيف للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="cat_search_cancel")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]]))
+        await safe_edit_message_text(query, "🔍 أرسل اسم التصنيف للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="cat_search_cancel")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]]))
         return BotState.STATE_ADD_FATWA_CAT_SEARCH
     elif data == "cat_search_cancel":
         slot = context.user_data.get('taxonomy_slot', 1); context.user_data.pop(f'cat_search_query_{slot}', None)
@@ -247,7 +248,7 @@ async def handle_category_selection(update: Update, context: ContextTypes.DEFAUL
     elif data == "skip_topic_categories": return await ask_source(update, context)
     elif data == "skip_fiqh_categories": context.user_data['taxonomy_slot'] = 2; return await show_categories_step(update, context, page=0)
     elif data == "add_new_category":
-        await query.edit_message_text("🏷️ أرسل اسم التصنيف الجديد:", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
+        await safe_edit_message_text(query, "🏷️ أرسل اسم التصنيف الجديد:", reply_markup=_add_flow_nav_keyboard(include_back_step=True))
         return BotState.STATE_CATEGORIES
     elif data.startswith("cat_page_"): await show_categories_step(update, context, int(data.split('_')[-1])); return BotState.STATE_CATEGORIES
     elif data.startswith("category_"):
@@ -256,7 +257,7 @@ async def handle_category_selection(update: Update, context: ContextTypes.DEFAUL
         context.user_data['current_cat_id'] = cat_id
         cat_name = dict(await db.get_categories()).get(cat_id, "")
         label = "الفقهي" if slot == 1 else "الموضوعي"
-        await query.edit_message_text(f"✅ تم اختيار التصنيف {label}: {cat_name}")
+        await safe_edit_message_text(query, f"✅ تم اختيار التصنيف {label}: {cat_name}")
         return await show_topics_step(query, context, cat_id)
 
 async def handle_category_search_add(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -272,7 +273,7 @@ async def receive_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if name == cat_name: cat_id = cid; break
     if cat_id: context.user_data['current_cat_id'] = cat_id
     label = "الفقهي" if slot == 1 else "الموضوعي"
-    await update.message.reply_text(f"✅ تم إضافة التصنيف {label}: {cat_name}")
+    await safe_reply_text(update, f"✅ تم إضافة التصنيف {label}: {cat_name}")
     return await show_topics_step(update, context, cat_id)
 
 async def show_topics_step(update_obj, context, cat_id, page=0, search_query=None):
@@ -317,13 +318,13 @@ async def handle_topic_selection(update: Update, context: ContextTypes.DEFAULT_T
     if data == "cancel": return await cancel_operation(update, context)
     if data == "back_main": return await back_to_main(update, context)
     if data == "search_topic":
-        await query.edit_message_text("🔍 أرسل اسم الموضوع للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="topic_search_cancel")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]]))
+        await safe_edit_message_text(query, "🔍 أرسل اسم الموضوع للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="topic_search_cancel")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]]))
         return BotState.STATE_ADD_FATWA_TOPIC_SEARCH
     elif data == "topic_search_cancel":
         if cat_id: context.user_data.pop(f'topic_search_query_{cat_id}', None); await show_topics_step(query, context, cat_id, page=0, search_query=None); return BotState.STATE_TOPICS
         return await show_categories_step(update, context, page=0)
     elif data == "add_new_topic":
-        await query.edit_message_text("📑 أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="topic_page_0")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]]))
+        await safe_edit_message_text(query, "📑 أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="topic_page_0")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]]))
         return BotState.STATE_TOPICS
     elif data.startswith("topic_page_"): await show_topics_step(query, context, cat_id, int(data.split('_')[-1])); return BotState.STATE_TOPICS
     elif data.startswith("toggle_topic_"):
@@ -388,12 +389,12 @@ async def show_sources_step(update_obj, context, page=0):
 async def handle_source_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); data = query.data
     if data.startswith("source_page_"): return await show_sources_step(update, context, int(data.split('_')[-1]))
-    if data == "source_manual": await query.edit_message_text("✍️ أرسل اسم المصدر الجديد:", reply_markup=_add_flow_nav_keyboard(include_back_step=True)); return BotState.STATE_SOURCE
+    if data == "source_manual": await safe_edit_message_text(query, "✍️ أرسل اسم المصدر الجديد:", reply_markup=_add_flow_nav_keyboard(include_back_step=True)); return BotState.STATE_SOURCE
     if data.startswith("pick_source_"):
         sid = int(data.split('_')[-1]); src = await db.get_source(sid)
         if not src: return BotState.STATE_SOURCE
         context.user_data['new_fatwa']['source_name'] = src['name']; _set_add_step(context, "source_title")
-        await query.edit_message_text("🎙️ أرسل **عنوان المصدر**:", reply_markup=_source_title_keyboard(), parse_mode='Markdown'); return BotState.STATE_SOURCE_TITLE
+        await safe_edit_message_text(query, "🎙️ أرسل **عنوان المصدر**:", reply_markup=_source_title_keyboard(), parse_mode='Markdown'); return BotState.STATE_SOURCE_TITLE
     return BotState.STATE_SOURCE
 
 async def ask_source(update_obj, context): return await show_sources_step(update_obj, context, 0)
@@ -401,16 +402,16 @@ async def ask_source(update_obj, context): return await show_sources_step(update
 async def receive_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if contains_url(update.message.text): return BotState.STATE_SOURCE
     context.user_data['new_fatwa']['source_name'] = update.message.text; _set_add_step(context, "source_title")
-    await update.message.reply_text("🎙️ أرسل **عنوان المصدر**:", reply_markup=_source_title_keyboard()); return BotState.STATE_SOURCE_TITLE
+    await safe_reply_text(update, "🎙️ أرسل **عنوان المصدر**:", reply_markup=_source_title_keyboard()); return BotState.STATE_SOURCE_TITLE
 
 async def receive_source_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if contains_url(update.message.text): return BotState.STATE_SOURCE_TITLE
     context.user_data['new_fatwa']['source_title'] = update.message.text; _set_add_step(context, "source_url")
-    await update.message.reply_text("🔗 أرسل **رابط المصدر**:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⏭️ تخطي", callback_data="skip_source_url")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]])); return BotState.STATE_SOURCE_URL
+    await safe_reply_text(update, "🔗 أرسل **رابط المصدر**:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⏭️ تخطي", callback_data="skip_source_url")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]])); return BotState.STATE_SOURCE_URL
 
 async def skip_source_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); context.user_data['new_fatwa']['source_title'] = ""; _set_add_step(context, "source_url")
-    await query.edit_message_text("🔗 أرسل **رابط المصدر**:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⏭️ تخطي", callback_data="skip_source_url")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]])); return BotState.STATE_SOURCE_URL
+    await safe_edit_message_text(query, "🔗 أرسل **رابط المصدر**:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⏭️ تخطي", callback_data="skip_source_url")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]])); return BotState.STATE_SOURCE_URL
 
 async def receive_source_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -420,8 +421,8 @@ async def receive_source_url(update: Update, context: ContextTypes.DEFAULT_TYPE)
         context.user_data['new_fatwa']['source_url'] = update.message.text
     _set_add_step(context, "audio")
     markup = InlineKeyboardMarkup([[InlineKeyboardButton("⏭️ تخطي", callback_data="skip_audio")], [InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")]])
-    if query: await query.edit_message_text("🔊 أرسل **رابط الصوتية**:", reply_markup=markup)
-    else: await update.message.reply_text("🔊 أرسل **رابط الصوتية**:", reply_markup=markup)
+    if query: await safe_edit_message_text(query, "🔊 أرسل **رابط الصوتية**:", reply_markup=markup)
+    else: await safe_reply_text(update, "🔊 أرسل **رابط الصوتية**:", reply_markup=markup)
     return BotState.STATE_AUDIO
 
 async def receive_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -438,9 +439,9 @@ async def receive_audio(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for i, part in enumerate(parts):
         is_last = (i == len(parts) - 1)
         if query:
-            if i == 0: await query.edit_message_text(part, reply_markup=markup if is_last else None, disable_web_page_preview=True)
-            else: await query.message.reply_text(part, reply_markup=markup if is_last else None, disable_web_page_preview=True)
-        else: await update.message.reply_text(part, reply_markup=markup if is_last else None, disable_web_page_preview=True)
+            if i == 0: await safe_edit_message_text(query, part, reply_markup=markup if is_last else None, disable_web_page_preview=True)
+            else: await safe_reply_text(query.message, part, reply_markup=markup if is_last else None, disable_web_page_preview=True)
+        else: await safe_reply_text(update, part, reply_markup=markup if is_last else None, disable_web_page_preview=True)
     return ConversationHandler.END
 
 async def receive_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -5,7 +5,8 @@ from typing import Optional
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import ContextTypes
 from core.bot_db import BotDatabaseManager
-from .utils import _ensure_admin, _safe_edit_message_text, _is_bot_removed_chat_error
+from core.utils import safe_reply_text, safe_edit_message_text
+from .utils import _ensure_admin, _is_bot_removed_chat_error
 
 logger = logging.getLogger(__name__)
 bot_db = BotDatabaseManager()
@@ -23,7 +24,7 @@ async def manage_channels_panel(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("📢 حالة القنوات", callback_data="status_channels"), InlineKeyboardButton("👥 حالة المجموعات", callback_data="status_groups")],
         [InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]
     ]
-    await _safe_edit_message_text(
+    await safe_edit_message_text(
         query,
         "📢 **إدارة القنوات والمجموعات**\n\nتحكم في القنوات المضافة والنشر التلقائي.",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -68,7 +69,7 @@ async def list_channels_handler(
     except Exception as e:
         logger.error(f"Error fetching channels: {e}")
         error_msg = "❌ حدث خطأ أثناء تحميل القنوات."
-        if query: await _safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة القنوات", callback_data="manage_channels")]]))
+        if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة القنوات", callback_data="manage_channels")]]))
         return
 
     ITEMS_PER_PAGE = 10; total_count = len(channels)
@@ -112,10 +113,7 @@ async def list_channels_handler(
     keyboard.append(nav_row) # Bottom
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="manage_channels")])
     
-    if query:
-        await _safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
-    else:
-        await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def cleanup_inactive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove inactive channels/groups only when the bot actually left."""

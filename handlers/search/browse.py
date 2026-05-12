@@ -4,7 +4,10 @@ from telegram.ext import ContextTypes, ConversationHandler
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
 from core.config import BotState
-from core.utils import callback_guard, sanitize_input
+from core.utils import (
+    callback_guard, sanitize_input,
+    safe_reply_text, safe_edit_message_text
+)
 from .pagination import display_search_results
 from .logic import _fetch_contextual_text_fatwas
 
@@ -17,7 +20,7 @@ async def start_browse_fatwas(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     await query.answer()
     from .keyboards import create_browse_keyboard
-    await query.edit_message_text("📂 تصفح الفتاوى حسب:", reply_markup=create_browse_keyboard())
+    await safe_edit_message_text(update, "📂 تصفح الفتاوى حسب:", reply_markup=create_browse_keyboard())
     return BotState.STATE_SEARCH
 
 async def search_scholar(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -42,10 +45,7 @@ async def show_scholars_list(update_obj, context, page=0):
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
     text = "👤 **اختر العالم:**"
-    if update_obj.message:
-        await update_obj.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else:
-        await update_obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_scholar_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -90,10 +90,7 @@ async def show_categories_list(update_obj, context, page=0, search_query=None):
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
     text = "🗂️ **اختر التصنيف:**"
-    if update_obj.message:
-        await update_obj.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else:
-        await update_obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_category_search_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -124,7 +121,7 @@ async def show_topics_list(update_obj, context, cat_id, page=0, search_query=Non
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع للتصنيفات", callback_data="search_category")])
     text = f"📚 **مواضيع تصنيف: {cat['name'] if cat else 'غير معروف'}**"
-    await update_obj.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_topic_search_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -175,10 +172,7 @@ async def show_sources_list(update_obj, context, page=0, search_query=None):
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
     text = "📚 **اختر المصدر:**"
-    if update_obj.message:
-        await update_obj.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else:
-        await update_obj.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_source_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

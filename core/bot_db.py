@@ -1,7 +1,7 @@
 import logging
 import aiosqlite
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from core.config import BOT_DB_PATH, OWNER_ID
 from core.database.base import DatabaseBase
@@ -235,11 +235,21 @@ class BotDatabaseManager(DatabaseBase):
 
         return await self.execute_with_retry(_get)
 
-    async def get_active_users(self, limit: int = None, offset: int = 0) -> List[Dict]:
+    async def get_active_users(self, limit: int = None, offset: int = 0) -> Tuple[List[Dict], int]:
+        """Retrieve active users (not blocked) with total count."""
         async def _get():
             conn = None
             try:
                 conn = await self.get_connection()
+                
+                # Get Total Count
+                async with conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE COALESCE(is_blocked, 0) = 0 AND user_id > 0 "
+                    "AND user_id NOT IN (SELECT chat_id FROM channels)"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    total_count = row[0] if row else 0
+
                 sql = """
                     SELECT user_id, username, full_name
                     FROM users
@@ -251,12 +261,13 @@ class BotDatabaseManager(DatabaseBase):
                 if limit is not None:
                     sql += " LIMIT ? OFFSET ?"
                     params.extend([limit, offset])
+                
                 async with conn.execute(sql, params) as cursor:
-                    return [dict(row) for row in await cursor.fetchall()]
+                    results = [dict(row) for row in await cursor.fetchall()]
+                return results, total_count
             finally:
                 if conn:
                     await conn.close()
-
         return await self.execute_with_retry(_get)
 
     async def get_active_users_count(self) -> int:
@@ -276,11 +287,21 @@ class BotDatabaseManager(DatabaseBase):
 
         return await self.execute_with_retry(_count)
 
-    async def get_inactive_users(self, limit: int = None, offset: int = 0) -> List[Dict]:
+    async def get_inactive_users(self, limit: int = None, offset: int = 0) -> Tuple[List[Dict], int]:
+        """Retrieve inactive users (blocked) with total count."""
         async def _get():
             conn = None
             try:
                 conn = await self.get_connection()
+                
+                # Get Total Count
+                async with conn.execute(
+                    "SELECT COUNT(*) FROM users WHERE COALESCE(is_blocked, 0) = 1 AND user_id > 0 "
+                    "AND user_id NOT IN (SELECT chat_id FROM channels)"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    total_count = row[0] if row else 0
+
                 sql = """
                     SELECT user_id, username, full_name, blocked_at
                     FROM users
@@ -293,11 +314,11 @@ class BotDatabaseManager(DatabaseBase):
                     sql += " LIMIT ? OFFSET ?"
                     params.extend([limit, offset])
                 async with conn.execute(sql, params) as cursor:
-                    return [dict(row) for row in await cursor.fetchall()]
+                    results = [dict(row) for row in await cursor.fetchall()]
+                return results, total_count
             finally:
                 if conn:
                     await conn.close()
-
         return await self.execute_with_retry(_get)
 
     async def get_inactive_users_count(self) -> int:
@@ -652,28 +673,27 @@ class BotDatabaseManager(DatabaseBase):
 
     # Stats
     async def get_statistics(self) -> Dict:
+        """Fetch bot-wide statistics (Optimized single query)."""
         async def _stats():
             conn = None
             try:
                 conn = await self.get_connection()
-                stats = {}
-                # Count channels/groups where the bot is still registered in DB
-                # (includes active + inactive بسبب نقص الصلاحيات).
-                async with conn.execute("SELECT COUNT(*) FROM channels WHERE type='channel'") as cursor:
+                sql = """
+                    SELECT 
+                        (SELECT COUNT(*) FROM channels WHERE type='channel') as channels,
+                        (SELECT COUNT(*) FROM channels WHERE type IN ('group', 'supergroup')) as groups,
+                        (SELECT COUNT(*) FROM users WHERE user_id > 0 AND COALESCE(is_blocked, 0) = 0 
+                         AND user_id NOT IN (SELECT chat_id FROM channels)) as subscribers
+                """
+                async with conn.execute(sql) as cursor:
                     row = await cursor.fetchone()
-                    stats["channels"] = row[0]
-                async with conn.execute("SELECT COUNT(*) FROM channels WHERE (type='group' OR type='supergroup')") as cursor:
-                    row = await cursor.fetchone()
-                    stats["groups"] = row[0]
-                async with conn.execute(
-                    "SELECT COUNT(*) FROM users WHERE user_id > 0 AND COALESCE(is_blocked, 0) = 0 "
-                    "AND user_id NOT IN (SELECT chat_id FROM channels)"
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    stats["subscribers"] = row[0]
-                return stats
+                    if row:
+                        return {
+                            "channels": row["channels"],
+                            "groups": row["groups"],
+                            "subscribers": row["subscribers"]
+                        }
+                    return {"channels": 0, "groups": 0, "subscribers": 0}
             finally:
-                if conn:
-                    await conn.close()
-
+                if conn: await conn.close()
         return await self.execute_with_retry(_stats)

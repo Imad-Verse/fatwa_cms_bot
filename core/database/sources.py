@@ -33,6 +33,7 @@ class SourcesMixin:
         )
         return cursor.lastrowid
 
+    @cached_async(ttl=600)
     async def get_sources(self, limit: int = None, offset: int = 0, search_query: str = None) -> List[Tuple[int, str]]:
         """Retrieve sources from sources table."""
         async def _get():

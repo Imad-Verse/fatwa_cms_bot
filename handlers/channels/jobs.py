@@ -58,14 +58,18 @@ async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = Fals
                 if "Forbidden" in str(e) or "chat not found" in str(e).lower(): await bot_db.update_channel_status(ch['chat_id'], 'inactive')
 
         if count_ch > 0: await db.increment_views_by(fatwa['id'], count_ch)
-        users = [] if maintenance_enabled else list(dict.fromkeys(await bot_db.get_all_bot_users()))
+        users = [] if maintenance_enabled else list(dict.fromkeys(await bot_db.get_active_user_ids()))
         for uid in users:
             try:
                 if uid in sent_to: continue
                 sent_msg = await context.bot.send_message(chat_id=uid, text=text, reply_markup=markup)
                 _register_delivery_message(context, fatwa['id'], uid, sent_msg.message_id); sent_to.add(uid); count_us += 1
                 await asyncio.sleep(0.05) # Delay
-            except: pass
+            except Exception as e:
+                err_str = str(e).lower()
+                if any(x in err_str for x in ("forbidden", "blocked", "deactivated", "chat not found")):
+                    await bot_db.set_user_blocked(uid, True)
+                logger.debug(f"Failed to send daily fatwa to user {uid}: {e}")
 
         admins = await bot_db.get_admins()
         if maintenance_enabled or not users:

@@ -44,12 +44,6 @@ async def _ensure_admin(update: Update, query=None) -> bool:
     elif update.message: await update.message.reply_text("❌ هذا القسم للمسؤولين فقط")
     return False
 
-async def _safe_edit_message_text(query, text: str, **kwargs):
-    """Edit message text and ignore 'Message is not modified' errors."""
-    try: await query.edit_message_text(text, **kwargs)
-    except BadRequest as e:
-        if "Message is not modified" in str(e): return
-        raise
 
 def _is_bot_removed_chat_error(error: Exception) -> bool:
     err = str(error).lower()

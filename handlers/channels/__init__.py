@@ -23,11 +23,11 @@ from .autopublish import (
     set_publish_category,
     start_select_publish_topics,
     toggle_publish_topic,
-    clear_publish_topics_selection
+    clear_publish_topics_selection,
+    start_schedule_fatwa_once
 )
 from .publish import (
-    force_publish_handler,
-    start_schedule_fatwa_once
+    force_publish_handler
 )
 from .jobs import (
     daily_fatwa_job,

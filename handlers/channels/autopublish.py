@@ -4,9 +4,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.utils import escape_markdown
+from core.utils import escape_markdown, safe_reply_text, safe_edit_message_text
 from .utils import (
-    _ensure_admin, _safe_edit_message_text, _parse_int_list_setting, _serialize_int_list_setting
+    _ensure_admin, _parse_int_list_setting, _serialize_int_list_setting
 )
 
 logger = logging.getLogger(__name__)
@@ -90,7 +90,7 @@ async def auto_publish_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton(toggle_btn_text, callback_data="toggle_auto_publish_master"), InlineKeyboardButton("🎯 إعدادات النشر المحدد", callback_data="targeted_publish_panel")],
         [InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]
     ]
-    await _safe_edit_message_text(query, f"⚙️ **إدارة النشر التلقائي**\n\nالحالة الحالية: {status_text}\n{sch_status}تحكم في خيارات النشر التلقائي.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(query, f"⚙️ **إدارة النشر التلقائي**\n\nالحالة الحالية: {status_text}\n{sch_status}تحكم في خيارات النشر التلقائي.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def toggle_auto_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تفعيل/تعطيل النشر التلقائي (Global/Random)"""
@@ -109,7 +109,7 @@ async def start_schedule_fatwa_once(update: Update, context: ContextTypes.DEFAUL
     context.user_data.pop('awaiting_pub_cat_search', None)
     num, _ = await _get_scheduled_fatwa(); prompt = f"🗓️ **جدولة فتوى**\n\nأرسل رقم الفتوى للنشر القادم."
     if num: prompt += f"\n\nالجدولة الحالية: `{num}`\nأرسل رقمًا جديدًا للاستبدال."
-    await _safe_edit_message_text(query, prompt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="auto_publish_panel")]]), parse_mode='Markdown')
+    await safe_edit_message_text(query, prompt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="auto_publish_panel")]]), parse_mode='Markdown')
 
 async def targeted_publish_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """لوحة النشر المحدد"""
@@ -125,7 +125,7 @@ async def targeted_publish_panel(update: Update, context: ContextTypes.DEFAULT_T
     if topic_ids: keyboard.append([InlineKeyboardButton("🧹 مسح اختيار المواضيع", callback_data="clear_pub_topics")])
     keyboard.extend([[InlineKeyboardButton(toggle_label, callback_data="toggle_targeted_publish")], [InlineKeyboardButton("🔙 رجوع", callback_data="auto_publish_panel")]])
     text = f"🎯 **النشر المحدد**\n\nالحالة: {status_icon}\nالتصنيف: **{escape_markdown(cat_name)}**\nالمواضيع: {topic_preview}"
-    await _safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def toggle_targeted_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تفعيل/تعطيل النشر المحدد"""
@@ -175,8 +175,7 @@ async def start_select_publish_category(update: Update, context: ContextTypes.DE
     if search_query: keyboard.append([InlineKeyboardButton("🔙 إلغاء البحث", callback_data="clear_pub_cat_search")])
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="targeted_publish_panel")])
     title = f"📂 **اختيار التصنيف**\n" + (f"🔍 نتائج البحث: {escape_markdown(search_query)}" if search_query else "اختر التصنيف للنشر:")
-    if query: await _safe_edit_message_text(query, title, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else: await update.message.reply_text(title, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_reply_text(update, title, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def start_search_publish_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """بدء وضع البحث"""
@@ -185,7 +184,7 @@ async def start_search_publish_category(update: Update, context: ContextTypes.DE
     if not await _ensure_admin(update, query): return
     context.user_data['awaiting_pub_cat_search'] = True
     context.user_data.pop(AWAITING_SCHEDULED_FATWA_INPUT_KEY, None)
-    await _safe_edit_message_text(query, "🔍 **بحث عن تصنيف**\n\nأرسل اسم التصنيف:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="sel_pub_cat_start")]]))
+    await safe_edit_message_text(query, "🔍 **بحث عن تصنيف**\n\nأرسل اسم التصنيف:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="sel_pub_cat_start")]]))
 
 async def clear_publish_category_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إلغاء البحث"""
@@ -276,8 +275,7 @@ async def start_select_publish_topics(update: Update, context: ContextTypes.DEFA
     keyboard.extend([[InlineKeyboardButton("✅ تم", callback_data="targeted_publish_panel")], [InlineKeyboardButton("🔙 رجوع", callback_data="targeted_publish_panel")]])
     preview = _build_topic_selection_preview(selected_ids, topic_map) if total > 0 else "لا توجد مواضيع"
     text = f"🧩 **اختيار المواضيع**\n\nالتصنيف: **{escape_markdown(category['name'])}**\nالمحدد: {preview}"
-    if query: await _safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-    else: await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def toggle_publish_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تبديل اختيار موضوع"""

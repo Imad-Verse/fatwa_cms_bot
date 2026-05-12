@@ -16,7 +16,11 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKe
 from telegram.ext import ContextTypes, ConversationHandler, ApplicationHandlerStop
 from core.config import TELEGRAM_TOKEN, OWNER_ID
 from core.bot_db import BotDatabaseManager
-from core.utils import rate_limiter, monitor, create_main_keyboard, back_to_main_keyboard, notify_new_subscription
+from core.utils import (
+    rate_limiter, monitor, create_main_keyboard, 
+    back_to_main_keyboard, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
+)
 
 logger = logging.getLogger(__name__)
 db = BotDatabaseManager()
@@ -63,7 +67,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Rate limiting
         if not rate_limiter.is_allowed(user_id):
-            await update.message.reply_text(
+            await safe_reply_text(
+                update,
                 "⏳ لقد تجاوزت الحد المسموح من الطلبات. يرجى الانتظار دقيقة.",
                 reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔄 إعادة المحاولة", callback_data="start_refresh")]])
             )
@@ -92,9 +97,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_keyboard = [["🤖 بوتاتنا", "🏠 القائمة الرئيسية"]]
         markup = ReplyKeyboardMarkup(reply_keyboard, resize_keyboard=True)
 
-        await update.message.reply_text("👇 القائمة السريعة:", reply_markup=markup)
+        await safe_reply_text(update, "👇 القائمة السريعة:", reply_markup=markup)
 
-        await update.message.reply_text(
+        await safe_reply_text(
+            update,
             welcome_text,
             reply_markup=create_main_keyboard(is_admin)
         )
@@ -113,7 +119,8 @@ async def start_refresh(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = await db.is_admin(user_id)
 
     try:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             f"👋 مرحباً بك {update.effective_user.first_name if update.effective_user.first_name else ''} في بوت ادارة الفتاوى\n👇 القائمة الرئيسية:",
             reply_markup=create_main_keyboard(is_admin)
         )
@@ -128,12 +135,14 @@ async def cancel_operation(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.callback_query:
         await update.callback_query.answer("تم الإلغاء")
-        await update.callback_query.edit_message_text(
+        await safe_edit_message_text(
+            update.callback_query,
             "❌ تم إلغاء العملية.",
             reply_markup=create_main_keyboard(is_admin)
         )
     else:
-        await update.message.reply_text(
+        await safe_reply_text(
+            update,
             "❌ تم إلغاء العملية.",
             reply_markup=create_main_keyboard(is_admin)
         )
@@ -172,9 +181,9 @@ async def maintenance_mode_guard(update: Update, context: ContextTypes.DEFAULT_T
         except Exception:
             pass
         if update.callback_query.message:
-            await update.callback_query.message.reply_text(maintenance_text, reply_markup=maintenance_markup)
+            await safe_reply_text(update.callback_query.message, maintenance_text, reply_markup=maintenance_markup)
     elif update.effective_message:
-        await update.effective_message.reply_text(maintenance_text, reply_markup=maintenance_markup)
+        await safe_reply_text(update.effective_message, maintenance_text, reply_markup=maintenance_markup)
 
     raise ApplicationHandlerStop
 
@@ -215,9 +224,9 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        await safe_edit_message_text(update.callback_query, text, reply_markup=reply_markup, parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
 
 async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المساعدة والمعلومات"""
@@ -260,9 +269,9 @@ async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.callback_query:
         await update.callback_query.answer()
-        await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(update.callback_query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def how_to_add_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض تعليمات إضافة البوت للقنوات والمجموعات"""
@@ -305,7 +314,7 @@ async def how_to_add_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("\U0001f3e0 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629", callback_data="back_main")]
     ]
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_web_page_preview=True)
+    await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_web_page_preview=True)
 
 async def show_add_bot_tutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إرسال فيديو وشرح لطريقة إضافة البوت"""
@@ -345,7 +354,7 @@ async def show_add_bot_tutorial(update: Update, context: ContextTypes.DEFAULT_TY
                 logger.error(f"Error sending media group: {e}")
                 await query.message.reply_text("❌ حدث خطأ أثناء إرسال الوسائط.")
         else:
-            await query.message.reply_text("❌ عذراً، الملفات التوضيحية غير متوفرة حالياً.")
+            await safe_reply_text(query.message, "❌ عذراً، الملفات التوضيحية غير متوفرة حالياً.")
     finally:
         for f in opened_files:
             try:
@@ -375,9 +384,9 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> N
         if isinstance(update, Update) and update.effective_message:
             text = "⚠️ حدث خطأ غير متوقع. يرجى المحاولة لاحقًا."
             if update.callback_query:
-                await update.callback_query.message.reply_text(text)
+                await safe_reply_text(update.callback_query.message, text)
             else:
-                await update.effective_message.reply_text(text)
+                await safe_reply_text(update.effective_message, text)
     except Exception as notify_error:
         logger.warning(f"Failed to notify user about internal error: {notify_error}")
 

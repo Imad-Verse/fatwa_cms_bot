@@ -17,7 +17,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import OWNER_ID
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 
@@ -71,18 +72,12 @@ async def manage_subscribers(
 
     ITEMS_PER_PAGE = 10
     if mode == "inactive":
-        total_count = await bot_db.get_inactive_users_count()
+        users, total_count = await bot_db.get_inactive_users(limit=ITEMS_PER_PAGE, offset=(page * ITEMS_PER_PAGE))
     else:
-        total_count = await bot_db.get_active_users_count()
-
+        users, total_count = await bot_db.get_active_users(limit=ITEMS_PER_PAGE, offset=(page * ITEMS_PER_PAGE))
+    
     total_pages = max((total_count - 1) // ITEMS_PER_PAGE + 1, 1)
-    page = max(0, min(page, total_pages - 1))
     offset = page * ITEMS_PER_PAGE
-
-    if mode == "inactive":
-        users = await bot_db.get_inactive_users(limit=ITEMS_PER_PAGE, offset=offset)
-    else:
-        users = await bot_db.get_active_users(limit=ITEMS_PER_PAGE, offset=offset)
 
     admin_ids = {int(a['user_id']) for a in await bot_db.get_admins()}
     admin_ids.add(int(OWNER_ID))
@@ -91,7 +86,8 @@ async def manage_subscribers(
         title = "المستخدمون غير النشطين [0]" if mode == "inactive" else "المستخدمون النشطين [0]"
         toggle_mode = "active" if mode == "inactive" else "inactive"
         toggle_label = "✅ النشطة" if mode == "inactive" else "⚫ غير النشطة"
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             f"🙍 <b>{title}</b>\n\nلا يوجد مستخدمون في هذه القائمة.",
             reply_markup=InlineKeyboardMarkup([
                 [
@@ -135,7 +131,7 @@ async def manage_subscribers(
         keyboard.append([InlineKeyboardButton("🗑️ حذف غير النشطين (إزالة البوت)", callback_data="cleanup_subscribers")])
     keyboard.append([InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")])
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 # ==============================================================================
 # 📂 القسم 4: إدارة التصنيفات والمواضيع (Categories & Topics)
@@ -163,14 +159,13 @@ async def cleanup_inactive_subscribers(update: Update, context: ContextTypes.DEF
         await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
         return
 
-    users = await bot_db.get_inactive_users()
-    total_users = len(users)
+    users, total_users = await bot_db.get_inactive_users()
     
     if total_users == 0:
         await query.answer("✅ لا يوجد مستخدمون غير نشطين لتنظيفهم.")
         return
 
-    status_msg = await query.message.reply_text(f"⏳ جاري بدء تنظيف {total_users} مستخدم...")
+    status_msg = await safe_reply_text(query.message, f"⏳ جاري بدء تنظيف {total_users} مستخدم...")
 
     removed_count = 0
     reactivated_count = 0

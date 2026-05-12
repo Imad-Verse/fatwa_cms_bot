@@ -1,7 +1,10 @@
 import logging
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes
-from core.utils import format_fatwa_card, callback_guard
+from core.utils import (
+    format_fatwa_card, callback_guard, 
+    safe_reply_text, safe_edit_message_text
+)
 from core.keyboards import create_pagination_keyboard
 
 logger = logging.getLogger(__name__)
@@ -11,10 +14,7 @@ async def display_search_results(update, context, results, title, total_count, i
     if not results:
         text = f"⚠️ **{title}**\n\nلم يتم العثور على أي نتائج تطابق بحثك."
         keyboard = [[InlineKeyboardButton(back_label or "🔙 رجوع", callback_data=back_callback)]]
-        if is_callback:
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
-        else:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         return
 
     pages_total = (total_count + 4) // 5
@@ -55,11 +55,7 @@ async def display_search_results(update, context, results, title, total_count, i
     keyboard.append([InlineKeyboardButton(back_label or "🔙 رجوع", callback_data=back_callback)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-
-    if is_callback:
-        await update.callback_query.edit_message_text(text, reply_markup=reply_markup, parse_mode='Markdown')
-    else:
-        await update.message.reply_text(text, reply_markup=reply_markup, parse_mode='Markdown')
+    await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
 
 @callback_guard(1.5)
 async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -74,7 +70,7 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
 
     search_state = context.user_data.get('current_search_state')
     if not search_state:
-        await query.message.reply_text("❌ انتهت جلسة البحث، يرجى البدء من جديد.")
+        await safe_reply_text(update, "❌ انتهت جلسة البحث، يرجى البدء من جديد.")
         return
 
     stype = search_state.get('type')

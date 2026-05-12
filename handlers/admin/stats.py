@@ -17,7 +17,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import BACKUP_DIR
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 from handlers.admin.panel import admin_panel
@@ -89,9 +90,9 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         
         if query:
-            await query.edit_message_text(text_out, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await safe_edit_message_text(query, text_out, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
         else:
-            await update.message.reply_text(text_out, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+            await safe_reply_text(update, text_out, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
     except BadRequest as e:
         if "Message is not modified" in str(e):
@@ -102,8 +103,8 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error in show_statistics: {e}")
         error_msg = "❌ حدث خطأ أثناء تحميل الإحصائيات."
-        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
-        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await safe_reply_text(update, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
 
 async def backup_database_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إنشاء نسخة احتياطية (DB + JSON)"""
@@ -139,11 +140,11 @@ async def backup_database_handler(update: Update, context: ContextTypes.DEFAULT_
             )
 
     if not success_db and not success_json:
-        await query.edit_message_text("❌ فشل النسخ الاحتياطي بالكامل.")
+        await safe_edit_message_text(query, "❌ فشل النسخ الاحتياطي بالكامل.")
     elif not success_db:
-        await query.message.reply_text("⚠️ فشل نسخ قاعدة البيانات (تم نسخ JSON فقط).")
+        await safe_reply_text(query.message, "⚠️ فشل نسخ قاعدة البيانات (تم نسخ JSON فقط).")
     elif not success_json:
-        await query.message.reply_text("⚠️ فشل نسخ JSON (تم نسخ قاعدة البيانات فقط).")
+        await safe_reply_text(query.message, "⚠️ فشل نسخ JSON (تم نسخ قاعدة البيانات فقط).")
 
 # ==================== إدارة الروابط (Missing Links) ====================
 
@@ -161,7 +162,8 @@ async def manage_links_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "🔗 **إدارة الروابط**\n\nاختر نوع الروابط التي تريد مراجعتها:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -184,14 +186,19 @@ async def show_missing_links(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     ITEMS_PER_PAGE = 5
     offset = page * ITEMS_PER_PAGE
-
-    fatwas = await db.get_fatwas_missing_link(link_type, limit=ITEMS_PER_PAGE, offset=offset)
-    total_count = await db.get_missing_link_count(link_type)
+    
+    try:
+        fatwas, total_count = await db.get_fatwas_missing_link(link_type, limit=ITEMS_PER_PAGE, offset=offset)
+    except Exception:
+        logger.exception("Failed to load missing links")
+        await safe_edit_message_text(query, "❌ حدث خطأ أثناء تحميل البيانات.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_links")]]))
+        return
 
     link_label = "مصدر" if link_type == 'source' else "صوتية"
 
     if not fatwas and page == 0:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             f"✅ لا توجد فتاوى ينقصها روابط {link_label}.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة الروابط", callback_data="manage_links")]])
         )
@@ -219,9 +226,9 @@ async def show_missing_links(update: Update, context: ContextTypes.DEFAULT_TYPE)
     keyboard.append([InlineKeyboardButton("🔙 إدارة الروابط", callback_data="manage_links")])
 
     if query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 # تعريف topic_conv في نهاية الملف لضمان تعريف جميع المعالجات المستخدمة

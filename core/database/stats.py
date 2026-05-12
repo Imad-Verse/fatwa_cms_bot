@@ -12,38 +12,33 @@ class StatsMixin:
     """Methods for Statistics, Backup, and Maintenance (Async)."""
 
     async def get_statistics(self) -> Dict:
-        """Fetch general database statistics."""
+        """Fetch general database statistics (Optimized single query)."""
         async def _stats():
             conn = None
             try:
                 conn = await self.get_connection()
-                stats = {}
-                async with conn.execute("SELECT COUNT(*) as count FROM fatwas") as cursor:
+                sql = """
+                    SELECT 
+                        COUNT(*) as total_fatwas,
+                        SUM(CASE WHEN status='published' THEN 1 ELSE 0 END) as published_fatwas,
+                        SUM(CASE WHEN status='draft' THEN 1 ELSE 0 END) as draft_fatwas,
+                        (SELECT COUNT(*) FROM categories) as categories_count,
+                        (SELECT COUNT(*) FROM scholars) as scholars_count,
+                        SUM(COALESCE(views, 0)) as total_views
+                    FROM fatwas
+                """
+                async with conn.execute(sql) as cursor:
                     row = await cursor.fetchone()
-                    stats['total_fatwas'] = row['count']
-                
-                async with conn.execute("SELECT COUNT(*) as count FROM fatwas WHERE status='published'") as cursor:
-                    row = await cursor.fetchone()
-                    stats['published_fatwas'] = row['count']
-                
-                async with conn.execute("SELECT COUNT(*) as count FROM fatwas WHERE status='draft'") as cursor:
-                    row = await cursor.fetchone()
-                    stats['draft_fatwas'] = row['count']
-                
-                async with conn.execute("SELECT COUNT(*) as count FROM categories") as cursor:
-                    row = await cursor.fetchone()
-                    stats['categories'] = row['count']
-                
-                async with conn.execute("SELECT COUNT(*) as count FROM scholars") as cursor:
-                    row = await cursor.fetchone()
-                    stats['scholars'] = row['count']
-                
-                async with conn.execute("SELECT SUM(views) as views FROM fatwas") as cursor:
-                    row = await cursor.fetchone()
-                    res = row['views']
-                    stats['total_views'] = res if res else 0
-                
-                return stats
+                    if row:
+                        return {
+                            'total_fatwas': row['total_fatwas'],
+                            'published_fatwas': row['published_fatwas'] or 0,
+                            'draft_fatwas': row['draft_fatwas'] or 0,
+                            'categories': row['categories_count'],
+                            'scholars': row['scholars_count'],
+                            'total_views': row['total_views'] or 0
+                        }
+                    return {}
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_stats)

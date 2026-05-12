@@ -6,7 +6,11 @@ from telegram.ext import (
 )
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
-from core.config import BotState
+from core.utils import (
+    sanitize_input, create_main_keyboard, 
+    back_to_categories_keyboard, escape_markdown,
+    safe_reply_text, safe_edit_message_text
+)
 from handlers.general import cancel_operation
 
 logger = logging.getLogger(__name__)
@@ -60,7 +64,7 @@ async def _show_edit_scholar_picker(update: Update, context: ContextTypes.DEFAUL
     keyboard.append([InlineKeyboardButton("➕ إضافة عالم جديد", callback_data="edit_add_new_scholar")])
     keyboard.append([InlineKeyboardButton("🔙 رجوع للتعديل", callback_data=f"edit_fatwa_{fatwa_id}")])
     text = f"👤 تعديل العالم\n\nالعالم الحالي: {current}\n\nاختر من القائمة:"
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard))
     return BotState.STATE_EDIT_MENU
 
 async def start_edit_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE, fatwa_id: int = None):
@@ -73,8 +77,8 @@ async def start_edit_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE, f
     context.user_data['edit_fatwa_id'] = fatwa_id
     kb = [[InlineKeyboardButton("العنوان", callback_data="edit_field_title"), InlineKeyboardButton("العالم", callback_data="edit_field_scholar")], [InlineKeyboardButton("السؤال", callback_data="edit_field_question"), InlineKeyboardButton("النص", callback_data="edit_field_text")], [InlineKeyboardButton("🏷️ التصنيف الفقهي", callback_data="edit_slot_1"), InlineKeyboardButton("🏷️ التصنيف الموضوعي", callback_data="edit_slot_2")], [InlineKeyboardButton("المصدر", callback_data="edit_field_source_name"), InlineKeyboardButton("عنوان المصدر", callback_data="edit_field_source_title")], [InlineKeyboardButton("رابط المصدر", callback_data="edit_field_source_url"), InlineKeyboardButton("الرابط الصوتي", callback_data="edit_field_audio")], [InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_edit")]]
     text = "✏️ **تعديل الفتوى**\n\nاختر الحقل المراد تعديله:"
-    if query: await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode='Markdown')
-    else: await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(kb), parse_mode='Markdown')
+    if query: await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(kb), parse_mode='Markdown')
+    else: await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(kb), parse_mode='Markdown')
     return BotState.STATE_EDIT_MENU
 
 async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -93,7 +97,7 @@ async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "edit_add_new_scholar":
         context.user_data['edit_field'] = "scholar_name"
         text, markup = _build_edit_field_prompt(await db.get_fatwa(fatwa_id), "scholar_name", f"edit_fatwa_{fatwa_id}")
-        await query.edit_message_text(text, reply_markup=markup); return BotState.STATE_EDIT_VALUE
+        await safe_edit_message_text(query, text, reply_markup=markup); return BotState.STATE_EDIT_VALUE
 
     if data.startswith("edit_slot_"):
         slot = int(data.split('_')[-1]); context.user_data['edit_taxonomy_slot'] = slot
@@ -101,7 +105,7 @@ async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         actions = [InlineKeyboardButton("تغيير التصنيف الحالي", callback_data=f"edit_tax_cat_{slot}"), InlineKeyboardButton("تعديل المواضيع", callback_data=f"edit_tax_top_{slot}"), InlineKeyboardButton("➕ إضافة تصنيف آخر", callback_data=f"add_another_cat_{slot}"), InlineKeyboardButton("🗑️ حذف كافة التصنيفات", callback_data="delete_all_fatwa_classifications")]
         if slot == 2: actions.append(InlineKeyboardButton("🗑️ حذف هذا النوع بالكامل", callback_data="delete_slot_2"))
         kb = _pair_buttons(actions); kb.append([InlineKeyboardButton("🔙 رجوع", callback_data=f"edit_fatwa_{fatwa_id}")])
-        await query.edit_message_text(f"🏷️ تعديل النوع {slot}\n\nالتصنيفات الحالية:\n{summary}\n\nاختر الإجراء:", reply_markup=InlineKeyboardMarkup(kb)); return BotState.STATE_EDIT_MENU
+        await safe_edit_message_text(query, f"🏷️ تعديل النوع {slot}\n\nالتصنيفات الحالية:\n{summary}\n\nاختر الإجراء:", reply_markup=InlineKeyboardMarkup(kb)); return BotState.STATE_EDIT_MENU
 
     if data.startswith("edit_tax_cat_") or data.startswith("add_another_cat_"):
         slot = int(data.split('_')[-1]); context.user_data['edit_taxonomy_slot'] = slot
@@ -128,23 +132,23 @@ async def handle_edit_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data in field_map:
         f = field_map[data]; context.user_data['edit_field'] = f
         text, markup = _build_edit_field_prompt(await db.get_fatwa(fatwa_id), f, f"edit_fatwa_{fatwa_id}")
-        await query.edit_message_text(text, reply_markup=markup); return BotState.STATE_EDIT_VALUE
+        await safe_edit_message_text(query, text, reply_markup=markup); return BotState.STATE_EDIT_VALUE
     return BotState.STATE_EDIT_MENU
 
 async def receive_edit_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     field = context.user_data.get('edit_field'); fatwa_id = context.user_data.get('edit_fatwa_id')
     await db.update_fatwa(fatwa_id, {field: update.message.text})
-    await update.message.reply_text("✅ تم التحديث."); return await start_edit_fatwa(update, context, fatwa_id=fatwa_id)
+    await safe_reply_text(update, "✅ تم التحديث."); return await start_edit_fatwa(update, context, fatwa_id=fatwa_id)
 
 async def handle_edit_category_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); data = query.data
     fatwa_id = context.user_data.get('edit_fatwa_id'); slot = context.user_data.get('edit_taxonomy_slot', 1)
 
     if data == "search_edit_cat":
-        await query.edit_message_text("🔍 أرسل اسم التصنيف للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_cat_search_cancel")]]))
+        await safe_edit_message_text(query, "🔍 أرسل اسم التصنيف للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_cat_search_cancel")]]))
         return BotState.STATE_EDIT_CAT_SEARCH
     if data == "edit_cat_search_cancel": context.user_data.pop(f'edit_cat_search_{slot}', None); await show_edit_categories_step(update, context, page=0); return BotState.STATE_EDIT_CATEGORY
-    if data == "add_new_edit_cat": await query.edit_message_text("🏷️ أرسل اسم التصنيف الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_cat")]])); return BotState.STATE_EDIT_NEW_CAT
+    if data == "add_new_edit_cat": await safe_edit_message_text(query, "🏷️ أرسل اسم التصنيف الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_cat")]])); return BotState.STATE_EDIT_NEW_CAT
     if data == "cancel_new_cat": await show_edit_categories_step(update, context, page=0); return BotState.STATE_EDIT_CATEGORY
     if data.startswith("edit_cat_page_"): await show_edit_categories_step(update, context, page=int(data.split('_')[-1])); return BotState.STATE_EDIT_CATEGORY
     if data.startswith("edit_cat_"):
@@ -178,18 +182,18 @@ async def show_edit_topics_step(update, context, cat_id=None, page=0, search_que
     keyboard.append([InlineKeyboardButton("🔍 بحث موضوع", callback_data="search_edit_topic"), InlineKeyboardButton("➕ موضوع جديد", callback_data="add_new_edit_topic")])
     keyboard.append([InlineKeyboardButton("📌 حفظ المواضيع", callback_data="edit_done_topics")]); keyboard.append([InlineKeyboardButton("🔙 رجوع للتعديل", callback_data=f"edit_fatwa_{fatwa_id}")])
     msg = f"🏷️ التصنيف: {cat_name}\n📑 عدل المواضيع:"
-    if update.callback_query: await update.callback_query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
-    else: await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    if update.callback_query: await safe_edit_message_text(update.callback_query, msg, reply_markup=InlineKeyboardMarkup(keyboard))
+    else: await safe_reply_text(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
     return BotState.STATE_EDIT_TOPIC
 
 async def handle_edit_topic_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; await query.answer(); data = query.data
     fatwa_id = context.user_data.get('edit_fatwa_id'); slot = context.user_data.get('edit_taxonomy_slot', 1); cat_id = context.user_data.get('edit_topic_cat_id')
     if data == "search_edit_topic":
-        await query.edit_message_text("🔍 أرسل اسم الموضوع للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_topic_search_cancel")]]))
+        await safe_edit_message_text(query, "🔍 أرسل اسم الموضوع للبحث عنه:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء البحث", callback_data="edit_topic_search_cancel")]]))
         return BotState.STATE_EDIT_TOP_SEARCH
     if data == "edit_topic_search_cancel": context.user_data.pop(f'edit_topic_search_{cat_id}', None); await show_edit_topics_step(update, context, cat_id=cat_id, page=0); return BotState.STATE_EDIT_TOPIC
-    if data == "add_new_edit_topic": await query.edit_message_text("📑 أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_topic")]])); return BotState.STATE_EDIT_NEW_TOP
+    if data == "add_new_edit_topic": await safe_edit_message_text(query, "📑 أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="cancel_new_topic")]])); return BotState.STATE_EDIT_NEW_TOP
     if data == "cancel_new_topic": await show_edit_topics_step(update, context, cat_id=cat_id, page=0); return BotState.STATE_EDIT_TOPIC
     if data.startswith("edit_top_page_"): await show_edit_topics_step(update, context, cat_id=cat_id, page=int(data.split('_')[-1])); return BotState.STATE_EDIT_TOPIC
     if data.startswith("edit_toggle_top_"):
@@ -229,8 +233,8 @@ async def show_edit_categories_step(update, context, page=0, search_query=None):
         keyboard.insert(0, nav_row) # Top
         keyboard.append(nav_row)    # Bottom
     keyboard.append([InlineKeyboardButton("🔍 بحث تصنيف", callback_data="search_edit_cat"), InlineKeyboardButton("➕ تصنيف جديد", callback_data="add_new_edit_cat")]); keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data=f"edit_fatwa_{context.user_data.get('edit_fatwa_id')}")])
-    if update.callback_query: await update.callback_query.edit_message_text("🏷️ اختر التصنيف الجديد:", reply_markup=InlineKeyboardMarkup(keyboard))
-    else: await update.message.reply_text("🏷️ اختر التصنيف الجديد:", reply_markup=InlineKeyboardMarkup(keyboard))
+    if update.callback_query: await safe_edit_message_text(update.callback_query, "🏷️ اختر التصنيف الجديد:", reply_markup=InlineKeyboardMarkup(keyboard))
+    else: await safe_reply_text(update, "🏷️ اختر التصنيف الجديد:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def handle_receive_new_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     name = update.message.text.strip(); slot = context.user_data.get('edit_taxonomy_slot', 1); cat_type = "fiqh" if slot == 1 else "topic"

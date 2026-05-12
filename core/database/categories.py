@@ -9,13 +9,24 @@ class CategoriesMixin:
     """Methods for Categories and Topics management (Async)."""
 
     async def add_category(self, name: str, description: str = None, category_type: str = 'fiqh') -> int:
-        """Add category."""
+        """Add category with existence check (normalized)."""
         async def _add():
             conn = None
             try:
                 conn = await self.get_connection()
+                # التحقق من الوجود المسبق (تطبيع النص)
+                async with conn.execute(
+                    "SELECT id FROM categories WHERE NORMALIZE_TEXT(name) = NORMALIZE_TEXT(?) AND type = ?",
+                    (name, category_type)
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        return row['id']
+
                 async with conn.execute("INSERT INTO categories (name, type) VALUES (?, ?)", (name, category_type)) as cursor:
                     await conn.commit()
+                    # إبطال الكاش
+                    cache.delete_pattern("get_categories")
                     return cursor.lastrowid
             except aiosqlite.IntegrityError:
                 return 0

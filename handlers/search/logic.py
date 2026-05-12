@@ -180,11 +180,8 @@ async def _fetch_popular_fatwas(public_only: bool, limit: int, offset: int, max_
             logger.error(f"Error fetching popular fatwas: {e}")
             return [], 0
 
-    results = []
-    for row in rows:
-        fatwa_data = await db.get_fatwa(row[0])
-        if fatwa_data:
-            results.append(fatwa_data)
+    fatwa_ids = [row[0] for row in rows]
+    results = await db.get_fatwas_by_ids(fatwa_ids, public_only=public_only)
     return results, total_count
 
 async def _fetch_general_text_fatwas(
@@ -513,16 +510,25 @@ async def _fetch_contextual_text_fatwas(
             rows, total_count, query_mode = await _run_query(use_fts=False)
         except Exception: return [], 0
 
-    results = []
+    fatwa_ids = [int(row["id"]) if hasattr(row, "keys") else int(row[0]) for row in rows]
+    results = await db.get_fatwas_by_ids(fatwa_ids, public_only=public_only)
+    
     debug_rows = []
-    for row in rows:
-        fatwa_id = int(row["id"]) if hasattr(row, "keys") else int(row[0])
-        fatwa_data = await db.get_fatwa(fatwa_id)
-        if fatwa_data:
-            results.append(fatwa_data)
-            if include_debug:
+    if include_debug:
+        # Create a mapping for quick lookup as results might be fewer than IDs if some were unpublished
+        results_map = {f['id']: f for f in results}
+        for i, row in enumerate(rows):
+            fid = fatwa_ids[i]
+            fatwa_data = results_map.get(fid)
+            if fatwa_data:
                 hits = _analyze_fatwa_term_hits(fatwa_data, recall_terms)
-                debug_rows.append({"fatwa_id": fatwa_id, "fatwa_number": fatwa_data.get("fatwa_number", fatwa_id), "score": round(float(row["relevance_score"]), 2), "primary_match_count": int(row["primary_match_count"]), **hits})
+                debug_rows.append({
+                    "fatwa_id": fid, 
+                    "fatwa_number": fatwa_data.get("fatwa_number", fid), 
+                    "score": round(float(row["relevance_score"]), 2), 
+                    "primary_match_count": int(row["primary_match_count"]), 
+                    **hits
+                })
 
     if include_debug:
         return results, total_count, {"mode": query_mode, "strict": bool(strict), "min_score": min_score_required, "min_primary": min_primary_matches, "primary_terms": primary_terms, "recall_terms": recall_terms, "weights": weights, "rows": debug_rows}
@@ -669,9 +675,6 @@ async def _fetch_smart_fatwas(query_text, use_title, use_text, scholar_ids, publ
             logger.error(f"Error in _fetch_smart_fatwas: {e}")
             return [], 0
 
-    results = []
-    for r in rows:
-        f = await db.get_fatwa(r[0])
-        if f:
-            results.append(f)
+    fatwa_ids = [r[0] for r in rows]
+    results = await db.get_fatwas_by_ids(fatwa_ids, public_only=public_only)
     return results, total_count

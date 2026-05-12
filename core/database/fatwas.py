@@ -91,6 +91,7 @@ class FatwasMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_delete)
 
+    @cached_async(ttl=600)
     async def get_all_fatwas(self, status: str = None, scholar_id: int = None, source_id: int = None, limit: int = 100, offset: int = 0) -> Tuple[List[Dict], int]:
         """Retrieve fatwas with optional filtering by status, scholar, or source."""
         async def _get_all():
@@ -136,29 +137,98 @@ class FatwasMixin:
         return await self.execute_with_retry(_get_all)
 
     async def get_fatwas_by_ids(self, fatwa_ids: List[int], public_only: bool = False) -> List[Dict]:
-        """Retrieve multiple fatwas by their IDs."""
+        """Retrieve multiple fatwas by their IDs in a truly batched way."""
         async def _get():
             if not fatwa_ids: return []
             conn = None
             try:
                 conn = await self.get_connection()
+                # 1. Fetch basic info
                 placeholders = ",".join(["?"] * len(fatwa_ids))
-                sql = f"SELECT id FROM fatwas WHERE id IN ({placeholders})"
                 params = list(fatwa_ids)
-                if public_only:
-                    sql += " AND status = 'published'"
+                status_clause = "AND f.status = 'published'" if public_only else ""
+                
+                sql = f"""
+                    SELECT f.*,
+                        s.name as scholar_name, s.biography as scholar_biography, s.website as scholar_website,
+                        st.title as source_title, st.source_url as source_url, st.audio_url as audio_url,
+                        src.name as source_name
+                    FROM fatwas f
+                    LEFT JOIN scholars s ON f.scholar_id = s.id
+                    LEFT JOIN source_titles st ON f.source_title_id = st.id
+                    LEFT JOIN sources src ON st.source_id = src.id
+                    WHERE f.id IN ({placeholders}) {status_clause}
+                """
+                
                 async with conn.execute(sql, params) as cursor:
                     rows = await cursor.fetchall()
                 
-                found_ids = [row[0] for row in rows]
-                id_set = set(found_ids)
-                ordered_ids = [fid for fid in fatwa_ids if fid in id_set]
-                results = []
-                for fid in ordered_ids:
-                    fatwa_data = await self.get_fatwa(fid)
-                    if fatwa_data:
-                        results.append(fatwa_data)
-                return results
+                if not rows: return []
+                
+                fatwas_dict = {row['id']: dict(row) for row in rows}
+                actual_ids = list(fatwas_dict.keys())
+                id_placeholders = ",".join(["?"] * len(actual_ids))
+                
+                # 2. Fetch all categories for these fatwas
+                async with conn.execute(f"""
+                    SELECT fc.fatwa_id, c.id, c.name, c.type 
+                    FROM categories c 
+                    JOIN fatwa_categories fc ON c.id = fc.category_id 
+                    WHERE fc.fatwa_id IN ({id_placeholders}) 
+                    ORDER BY c.type, c.name
+                """, actual_ids) as cursor:
+                    category_rows = await cursor.fetchall()
+                
+                # 3. Fetch all topics for these fatwas
+                async with conn.execute(f"""
+                    SELECT ft.fatwa_id, t.id as topic_id, t.name as topic_name, t.category_id as category_id,
+                        c.type as category_type, c.name as category_name
+                    FROM fatwa_topics ft
+                    JOIN topics t ON ft.topic_id = t.id
+                    JOIN categories c ON t.category_id = c.id
+                    WHERE ft.fatwa_id IN ({id_placeholders})
+                    ORDER BY c.type, c.name, t.name
+                """, actual_ids) as cursor:
+                    topic_rows = await cursor.fetchall()
+                
+                # Group data by fatwa_id
+                cats_by_fatwa = {}
+                for r in category_rows:
+                    cats_by_fatwa.setdefault(r['fatwa_id'], []).append(dict(r))
+                
+                topics_by_fatwa_cat = {}
+                for r in topic_rows:
+                    fid = r['fatwa_id']
+                    cid = r['category_id']
+                    topics_by_fatwa_cat.setdefault(fid, {}).setdefault(cid, []).append({'id': r['topic_id'], 'name': r['topic_name']})
+                
+                # Reconstruct classifications for each fatwa
+                for fid, fatwa in fatwas_dict.items():
+                    f_cats = cats_by_fatwa.get(fid, [])
+                    f_topics_map = topics_by_fatwa_cat.get(fid, {})
+                    
+                    classifications = []
+                    slots_data = {}
+                    for cat in f_cats:
+                        slot_idx = 1 if cat['type'] == 'fiqh' else 2
+                        slots_data.setdefault(slot_idx, {})
+                        slots_data[slot_idx][cat['id']] = {
+                            'id': cat['id'], 'name': cat['name'], 
+                            'topics': f_topics_map.get(cat['id'], [])
+                        }
+                    
+                    for slot_idx in sorted(slots_data.keys()):
+                        for cat_id in sorted(slots_data[slot_idx].keys()):
+                            cat = slots_data[slot_idx][cat_id]
+                            classifications.append({
+                                'category_id': cat['id'], 'category_name': cat['name'],
+                                'topic_ids': [t['id'] for t in cat['topics']], 'topic_names': [t['name'] for t in cat['topics']],
+                                'slot_index': slot_idx
+                            })
+                    fatwa['classifications'] = classifications
+                
+                # Return in requested order if possible
+                return [fatwas_dict[fid] for fid in fatwa_ids if fid in fatwas_dict]
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
@@ -674,7 +744,7 @@ class FatwasMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
 
-    async def get_fatwas_missing_link(self, link_type: str, limit: int = 50, offset: int = 0) -> List[Dict]:
+    async def get_fatwas_missing_link(self, link_type: str, limit: int = 50, offset: int = 0) -> Tuple[List[Dict], int]:
         """Retrieve fatwas missing source or audio links."""
         async def _get():
             conn = None
@@ -682,10 +752,21 @@ class FatwasMixin:
                 conn = await self.get_connection()
                 if link_type == 'source': where_sql = "(st.source_url IS NULL OR st.source_url = '')"
                 elif link_type == 'audio': where_sql = "(st.audio_url IS NULL OR st.audio_url = '')"
-                else: return []
+                else: return [], 0
+                
+                async with conn.execute(f"SELECT COUNT(*) FROM fatwas f JOIN source_titles st ON f.source_title_id = st.id WHERE {where_sql}") as cursor:
+                    row = await cursor.fetchone()
+                    total_count = row[0] if row else 0
+
                 async with conn.execute(f"SELECT f.id FROM fatwas f JOIN source_titles st ON f.source_title_id = st.id WHERE {where_sql} ORDER BY f.fatwa_number DESC LIMIT ? OFFSET ?", (limit, offset)) as cursor:
                     rows = await cursor.fetchall()
-                return [await self.get_fatwa(row[0]) for row in rows]
+                
+                results = []
+                for row in rows:
+                    fatwa_data = await self.get_fatwa(row[0])
+                    if fatwa_data:
+                        results.append(fatwa_data)
+                return results, total_count
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
@@ -706,7 +787,7 @@ class FatwasMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_count)
 
-    async def get_duplicate_fatwas(self, limit: int = 50, offset: int = 0) -> List[Dict]:
+    async def get_duplicate_fatwas(self, limit: int = 50, offset: int = 0) -> Tuple[List[Dict], int]:
         """Retrieve duplicate fatwas by answer text."""
         async def _get():
             conn = None
@@ -719,7 +800,13 @@ class FatwasMixin:
                 """, (limit, offset)) as cursor:
                     rows = await cursor.fetchall()
                 ids = [row['id'] for row in rows]
-                return await self.get_fatwas_by_ids(ids) if ids else []
+                
+                total_count = await self.get_duplicate_count()
+                
+                results = []
+                if ids:
+                    results = await self.get_fatwas_by_ids(ids)
+                return results, total_count
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
