@@ -212,6 +212,10 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "يتيح لك تحميل فيديوهاتك المفضلة بأعلى جودة ممكنة، بالإضافة إلى استخراج الصوت منها بكل سهولة وسرعة، حيث يُعتبر سريعًا ومجانيًا وسهل الاستخدام ✅️. يمكنه تحميل الفيديوهات القصيرة من منصات مثل يوتيوب، تيك توك، فيسبوك، وإنستجرام.\n\n"
         "⛔️ **تنبيه:** لا تستخدم البوت فيما يغضب الله عز وجل كتحميل الموسيقى والصور المحرمة!\n\n"
         "🔥 جربه الآن: @TitanSvBot\n\n"
+        "4- 🤖 **بوت فذكر الدعوي | Fadhakir Bot :**\n\n"
+        "🎯 **ماذا يمكنه أن يفعل لك؟**\n\n"
+        "بوت \"فَذَكِّر\" رفيقك اليومي للتذكير بالصلوات، الأذكار، والسنن، ونشر الفوائد والفيديوهات الدعوية، أضفه لقناتك أو مجموعتك لنشر الخير.\n\n"
+        "🔥 جربه الآن: @Fadhakir_bot\n"
     )
     # أزرار مدمجة
     keyboard = [
@@ -231,7 +235,7 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المساعدة والمعلومات"""
     text = (
-        "ℹ️ **عن بوت ادارة الفتاوى**\n\n"
+        "🌟 **عن بوت ادارة الفتاوى**\n\n"
         "مشروع خيري يهدف لأرشفة ونشر فتاوى العلماء الثقات، وتسهيل الوصول إليها عبر التليجرام.\n\n"
         "🎯 **أهدافنا:**\n"
         "• نشر العلم الشرعي الصحيح من مصادره الموثوقة.\n"
@@ -262,9 +266,12 @@ async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [
             InlineKeyboardButton("📩 راسل المطور", url="https://t.me/abulharith_imad"),
-            InlineKeyboardButton("\U0001f4e4 \u0645\u0634\u0627\u0631\u0643\u0629 \u0627\u0644\u0628\u0648\u062a", url=share_url),
+            InlineKeyboardButton("🤖 قائمة بوتاتنا", callback_data="our_bots")
         ],
-        [InlineKeyboardButton("\U0001f3e0 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629", callback_data="back_main")],
+        [
+            InlineKeyboardButton("📤 مشاركة البوت", url=share_url),
+            InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")
+        ],
     ]
 
     if update.callback_query:

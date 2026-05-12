@@ -61,6 +61,7 @@ def register_all_handlers(app: Application):
     app.add_handler(CallbackQueryHandler(back_to_main, pattern='^back_main$'))
     app.add_handler(CallbackQueryHandler(cancel_operation, pattern='^cancel$'))
     app.add_handler(CallbackQueryHandler(help_info, pattern='^help_info$'))
+    app.add_handler(CallbackQueryHandler(our_bots, pattern='^our_bots$'))
     app.add_handler(CallbackQueryHandler(how_to_add_bot, pattern='^how_to_add_bot$'))
     app.add_handler(CallbackQueryHandler(show_add_bot_tutorial, pattern='^show_add_bot_tutorial$'))
     app.add_handler(CallbackQueryHandler(noop, pattern='^noop$'))

@@ -68,7 +68,7 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📚 إجمالي الفتاوى: {stats.get('total_fatwas', 0)}\n"
             f"📢 المنشورة: {stats.get('published_fatwas', 0)}\n"
             f"📝 المسودات: {stats.get('draft_fatwas', 0)}\n"
-            f"🆕 المضافة هذا الأسبوع: {weekly_added_count}\n"
+            f"🔥 المضافة هذا الأسبوع: {weekly_added_count}\n"
             f"🏷️ التصنيفات: {stats.get('categories', 0)}\n"
             f"👤 عداد المشايخ: {stats.get('scholars', 0)}\n\n"
             f"📢 القنوات: {stats.get('channels', 0)}\n"
