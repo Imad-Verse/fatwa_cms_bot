@@ -52,17 +52,27 @@ async def delete_fatwa_from_all(update: Update, context: ContextTypes.DEFAULT_TY
 async def publish_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     if not await bot_db.is_admin(update.effective_user.id): return
-    fatwa_id = int(query.data.split('_')[1])
+    
+    parts = query.data.split('_')
+    fatwa_id = int(parts[1])
+    
     await db.update_fatwa(fatwa_id, {'status': 'published'})
     await query.answer("✅ تم النشر!")
+
+    # إذا كان النشر من قائمة المسودات، نعود للقائمة بدلاً من عرض الفتوى
+    if len(parts) >= 4 and parts[2] == "drafts":
+        from handlers.admin.panel import show_admin_drafts
+        page = int(parts[3]) if parts[3].isdigit() else 0
+        return await show_admin_drafts(update, context, page=page)
+
     fatwa = await db.get_fatwa(fatwa_id)
     text = format_fatwa_content(fatwa)
     keyboard = [[InlineKeyboardButton("✏️ تعديل", callback_data=f"edit_fatwa_{fatwa_id}"), InlineKeyboardButton("🗑️ حذف", callback_data=f"confirm_delete_{fatwa_id}")], [InlineKeyboardButton("📢 إرسال الفتوى", callback_data=f"broadcast_{fatwa_id}")], [InlineKeyboardButton("📋 نسخ النص", callback_data=f"copy_full_{fatwa_id}"), InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]
     markup = InlineKeyboardMarkup(keyboard)
     
-    parts = split_long_message(text)
-    for i, part in enumerate(parts):
-        is_last = (i == len(parts) - 1)
+    parts_msg = split_long_message(text)
+    for i, part in enumerate(parts_msg):
+        is_last = (i == len(parts_msg) - 1)
         if i == 0:
             await safe_edit_message_text(query, part, reply_markup=markup if is_last else None)
         else:
