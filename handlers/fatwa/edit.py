@@ -59,7 +59,7 @@ async def _show_edit_scholar_picker(update: Update, context: ContextTypes.DEFAUL
     if offset + ITEMS_PER_PAGE < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"edit_sch_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     keyboard.append([InlineKeyboardButton("➕ إضافة عالم جديد", callback_data="edit_add_new_scholar")])
@@ -180,7 +180,7 @@ async def show_edit_topics_step(update, context, cat_id=None, page=0, search_que
     if offset + ITEMS_PER_PAGE < total_count: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"edit_top_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     keyboard.append([InlineKeyboardButton("🔍 بحث موضوع", callback_data="search_edit_topic"), InlineKeyboardButton("➕ موضوع جديد", callback_data="add_new_edit_topic")])
     keyboard.append([InlineKeyboardButton("📌 حفظ المواضيع", callback_data="edit_done_topics")]); keyboard.append([InlineKeyboardButton("🔙 رجوع للتعديل", callback_data=f"edit_fatwa_{fatwa_id}")])
@@ -233,7 +233,7 @@ async def show_edit_categories_step(update, context, page=0, search_query=None):
     if offset + ITEMS_PER_PAGE < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"edit_cat_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     keyboard.append([InlineKeyboardButton("🔍 بحث تصنيف", callback_data="search_edit_cat"), InlineKeyboardButton("➕ تصنيف جديد", callback_data="add_new_edit_cat")]); keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data=f"edit_fatwa_{context.user_data.get('edit_fatwa_id')}")])
     if update.callback_query: await safe_edit_message_text(update.callback_query, "🏷️ اختر التصنيف الجديد:", reply_markup=InlineKeyboardMarkup(keyboard))

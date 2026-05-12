@@ -220,7 +220,7 @@ async def show_missing_links(update: Update, context: ContextTypes.DEFAULT_TYPE)
         nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"missing_links_{link_type}_{page+1}"))
 
     if nav_buttons:
-        keyboard.insert(0, nav_buttons) # Top
+        # keyboard.insert(0, nav_buttons) # Top - REMOVED
         keyboard.append(nav_buttons)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔙 إدارة الروابط", callback_data="manage_links")])

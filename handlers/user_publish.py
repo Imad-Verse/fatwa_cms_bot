@@ -259,7 +259,7 @@ async def user_send_fatwa_panel(update: Update, context: ContextTypes.DEFAULT_TY
         nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"user_sf_page_{page + 1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     # عدد المختار

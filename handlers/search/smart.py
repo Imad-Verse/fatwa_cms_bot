@@ -102,7 +102,7 @@ async def show_smart_scholars_list(update_obj, context: ContextTypes.DEFAULT_TYP
         nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"smart_sch_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔙 إنهاء الاختيار", callback_data="search_smart")])

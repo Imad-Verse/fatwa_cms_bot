@@ -212,7 +212,7 @@ async def start_select_publish_category(update: Update, context: ContextTypes.DE
     if offset + ITEMS < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sel_pub_cat_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔍 بحث عن تصنيف", callback_data="search_pub_cat")])
@@ -322,7 +322,7 @@ async def start_select_publish_topics(update: Update, context: ContextTypes.DEFA
     if offset + ITEMS < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sel_pub_top_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     if selected_ids: keyboard.append([InlineKeyboardButton("🧹 مسح الاختيار", callback_data="clear_pub_topics")])

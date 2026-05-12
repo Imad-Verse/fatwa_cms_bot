@@ -41,7 +41,7 @@ async def show_scholars_list(update_obj, context, page=0):
     if (page+1)*10 < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"sch_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
@@ -88,7 +88,7 @@ async def show_categories_list(update_obj, context, page=0, search_query=None):
     if (page+1)*10 < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"cat_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
@@ -119,7 +119,7 @@ async def show_topics_list(update_obj, context, cat_id, page=0, search_query=Non
     if (page+1)*10 < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"top_page_{cat_id}_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع للتصنيفات", callback_data="search_category")])
@@ -172,7 +172,7 @@ async def show_sources_list(update_obj, context, page=0, search_query=None):
     if (page+1)*10 < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"src_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])

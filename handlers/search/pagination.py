@@ -48,7 +48,8 @@ async def display_search_results(update, context, results, title, total_count, i
         nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"res_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
+        pass
 
     # Fatwa quick view buttons (Grouped by 2)
     view_row = []

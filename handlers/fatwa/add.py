@@ -85,7 +85,8 @@ async def show_scholars_step(update_obj, context, page=0, search_query=None):
     if offset + ITEMS_PER_PAGE < total_count: nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"scholar_page_{page+1}"))
     
     if nav_buttons:
-        keyboard.insert(0, nav_buttons) # Top
+        # keyboard.insert(0, nav_buttons) # Top - REMOVED
+        pass
         keyboard.append(nav_buttons)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔍 بحث عالم", callback_data="search_scholar_add"), InlineKeyboardButton("➕ عالم جديد", callback_data="new_scholar")])
@@ -221,7 +222,7 @@ async def show_categories_step(update, context, page=0, search_query=None):
     if offset + ITEMS_PER_PAGE < total_count: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"cat_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔍 بحث تصنيف", callback_data="search_cat_add"), InlineKeyboardButton("➕ تصنيف جديد", callback_data="add_new_category")])
@@ -302,7 +303,7 @@ async def show_topics_step(update_obj, context, cat_id, page=0, search_query=Non
     if offset + ITEMS_PER_PAGE < total_count: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"topic_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
 
     keyboard.append([InlineKeyboardButton("🔍 بحث موضوع", callback_data="search_topic"), InlineKeyboardButton("➕ موضوع جديد", callback_data="add_new_topic")])
@@ -380,7 +381,7 @@ async def show_sources_step(update_obj, context, page=0):
     if offset + ITEMS_PER_PAGE < total: nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"source_page_{page+1}"))
     
     if nav_row:
-        keyboard.insert(0, nav_row) # Top
+        # keyboard.insert(0, nav_row) # Top - REMOVED
         keyboard.append(nav_row)    # Bottom
     keyboard.append([InlineKeyboardButton("✍️ كتابة مصدر جديد", callback_data="source_manual")])
     keyboard.append([InlineKeyboardButton("🔙 رجوع خطوة", callback_data="back_step"), InlineKeyboardButton("❌ إلغاء", callback_data="cancel")])

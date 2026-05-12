@@ -125,7 +125,8 @@ async def my_favorites_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"fav_page_{page+1}"))
 
     if nav_buttons:
-        keyboard.insert(1, nav_buttons) # After sort row
+        # keyboard.insert(1, nav_buttons) # After sort row - REMOVED
+        pass
         keyboard.append(nav_buttons)    # Bottom
 
     keyboard.append([InlineKeyboardButton("\U0001f3e0 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629", callback_data="back_main")])
