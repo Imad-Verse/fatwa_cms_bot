@@ -132,8 +132,6 @@ async def start_set_daily_time(update: Update, context: ContextTypes.DEFAULT_TYP
         parse_mode='Markdown'
     )
     return BotState.STATE_SETTINGS_DAILY_TIME
-...
-    return BotState.STATE_SETTINGS_WEEKLY_TIME
 
 async def start_set_weekly_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

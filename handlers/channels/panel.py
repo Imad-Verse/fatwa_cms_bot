@@ -13,8 +13,11 @@ bot_db = BotDatabaseManager()
 async def manage_channels_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """لوحة إدارة القنوات"""
     query = update.callback_query
-    await query.answer()
-    if not await _ensure_admin(update, query): return
+    if query: await query.answer()
+
+    if not await bot_db.is_admin(update.effective_user.id):
+        if query: await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
+        return
 
     keyboard = [
         [InlineKeyboardButton("📢 حالة القنوات", callback_data="status_channels"), InlineKeyboardButton("👥 حالة المجموعات", callback_data="status_groups")],
@@ -42,8 +45,12 @@ async def list_channels_handler(
     page_override: Optional[int] = None,
 ):
     """سرد القنوات (نشطة/غير نشطة)"""
-    query = update.callback_query; await query.answer()
-    if not await _ensure_admin(update, query): return
+    query = update.callback_query
+    if query: await query.answer()
+
+    if not await bot_db.is_admin(update.effective_user.id):
+        if query: await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
+        return
 
     if c_type_override and status_override is not None:
         c_type, status, page = c_type_override, status_override, page_override if page_override is not None else 0
@@ -55,8 +62,14 @@ async def list_channels_handler(
         try: page = int(parts[3]) if len(parts) >= 4 else 0
         except: page = 0
 
-    channels = await bot_db.get_channels(status=status, chat_type=c_type)
-    channels.sort(key=lambda row: (str(row.get('added_at') or ''), int(row.get('chat_id', 0))), reverse=True)
+    try:
+        channels = await bot_db.get_channels(status=status, chat_type=c_type)
+        channels.sort(key=lambda row: (str(row.get('added_at') or ''), int(row.get('chat_id', 0))), reverse=True)
+    except Exception as e:
+        logger.error(f"Error fetching channels: {e}")
+        error_msg = "❌ حدث خطأ أثناء تحميل القنوات."
+        if query: await _safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة القنوات", callback_data="manage_channels")]]))
+        return
 
     ITEMS_PER_PAGE = 10; total_count = len(channels)
     total_pages = max((total_count - 1) // ITEMS_PER_PAGE + 1, 1)
@@ -92,8 +105,6 @@ async def list_channels_handler(
     ]
 
     keyboard = [nav_row] # Top
-    # In a real app we'd add list items here if they were buttons, but they are text.
-    # So we just repeat the nav row at the bottom.
 
     if status == 'inactive' and total_count:
         keyboard.append([InlineKeyboardButton("🗑️ حذف الكل (خروج)", callback_data=f"cleanup_{c_type}")])
@@ -101,7 +112,10 @@ async def list_channels_handler(
     keyboard.append(nav_row) # Bottom
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="manage_channels")])
     
-    await _safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    if query:
+        await _safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    else:
+        await update.message.reply_html(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def cleanup_inactive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove inactive channels/groups only when the bot actually left."""

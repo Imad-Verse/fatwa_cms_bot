@@ -113,6 +113,7 @@ def register_all_handlers(app: Application):
     app.add_handler(CallbackQueryHandler(manage_admins, pattern='^manage_admins$'))
     app.add_handler(CallbackQueryHandler(manage_scholars_panel, pattern='^manage_scholars$'))
     app.add_handler(CallbackQueryHandler(show_scholars_admin, pattern='^scholars_list'))
+    app.add_handler(CallbackQueryHandler(show_scholars_admin, pattern='^clear_admin_schol_search$'))
     app.add_handler(CallbackQueryHandler(view_scholar_admin, pattern='^scholar_view_'))
     app.add_handler(CallbackQueryHandler(manage_subscribers, pattern='^manage_subscribers'))
     app.add_handler(CallbackQueryHandler(cleanup_inactive_subscribers, pattern='^cleanup_subscribers$'))

@@ -265,23 +265,12 @@ def sanitize_input(text: str, max_length: int = 4000) -> str:
     return text[:max_length].strip()
 
 def escape_markdown(text: str) -> str:
-    """تنظيف النص من الأحرف الخاصة في Markdown لتجنب أخطاء parsing
-
-    Args:
-        text: النص المراد تنظيفه
-
-    Returns:
-        النص بعد escape الأحرف الخاصة
-    """
+    """تنظيف النص من الأحرف الخاصة في Markdown لتجنب أخطاء parsing"""
     if not text:
         return ""
-
-    # الأحرف الخاصة في Markdown v1
-    special_chars = ['_', '*', '`', '[']
-
-    for char in special_chars:
+    # Characters that need escaping in Markdown
+    for char in ['_', '*', '`', '[']:
         text = text.replace(char, '\\' + char)
-
     return text
 
 def remove_tashkeel(text: str) -> str:
@@ -318,15 +307,11 @@ def remove_tashkeel(text: str) -> str:
         "ـ": "",  # تطويل
     }))
 
-    # 3) إزالة علامات الترقيم والرموز (Unicode P/S) بتحويلها لمسافة
-    chars = []
-    for ch in text:
-        category = unicodedata.category(ch)
-        if category.startswith("P") or category.startswith("S"):
-            chars.append(" ")
-        else:
-            chars.append(ch)
-    text = "".join(chars)
+    # 3) إزالة علامات الترقيم والرموز (Unicode P/S)
+    # نستخدم regex لاستبدال كل ما ليس حرفاً أو رقماً أو مسافة بمسافة واحدة
+    # [^\w\s] قد يحذف التشكيل إذا لم يتم حذفه مسبقاً، لكننا حذفناه في الخطوة 1
+    # الـ regex التالي أكثر شمولاً لعلامات الترقيم والرموز
+    text = re.sub(r'[^\w\s\u0621-\u064A\u0660-\u0669]', ' ', text, flags=re.UNICODE)
 
     # 4) توحيد المسافات
     text = re.sub(r"\s+", " ", text, flags=re.UNICODE).strip()
@@ -453,7 +438,7 @@ def format_fatwa_card(fatwa: dict, use_markdown: bool = False) -> str:
     def _esc(value: str) -> str:
         if not use_markdown:
             return value or ""
-        return escape_markdown(value or "")
+        return escape_markdown(str(value) if value else "")
 
     # تنسيق التصنيفات (قائمة مُسطَّحة بدون عناوين فقهية/موضوعية)
     items = []
@@ -479,58 +464,73 @@ def format_fatwa_card(fatwa: dict, use_markdown: bool = False) -> str:
     num_label = f"[{num}]" if not use_markdown else f"\\[{num}\\]"
 
     # فصل الرقم عن العنوان (بدون سطر التاريخ)
-    return (
-        f"🔢 رقم الفتوى: {num_label}\n"
-        f"📝 العنوان: {_esc(fatwa.get('title') or '')}\n"
-        f"👤 العالم: {_esc(fatwa.get('scholar_name') or 'غير محدد')}\n"
-        f"{cat_block}\n"
-        f"👁️ المشاهدات: {fatwa.get('views', 0)}\n"
-        f"{status_icon}"
-    )
+    title = _esc(fatwa.get('title') or '')
+    scholar = _esc(fatwa.get('scholar_name') or 'غير محدد')
+    
+    if use_markdown:
+        return (
+            f"🔢 رقم الفتوى: {num_label}\n"
+            f"📝 العنوان: **{title}**\n"
+            f"👤 العالم: *{scholar}*\n"
+            f"{cat_block}\n"
+            f"👁️ المشاهدات: {fatwa.get('views', 0)}\n"
+            f"{status_icon}"
+        )
+    else:
+        return (
+            f"🔢 رقم الفتوى: {num_label}\n"
+            f"📝 العنوان: {title}\n"
+            f"👤 العالم: {scholar}\n"
+            f"{cat_block}\n"
+            f"👁️ المشاهدات: {fatwa.get('views', 0)}\n"
+            f"{status_icon}"
+        )
 
 
 def format_fatwa_content(fatwa: dict, use_markdown: bool = False) -> str:
-    """تنسيق محتوى الفتوى الكامل - بدون روابط نصية
-
-    Args:
-        fatwa: بيانات الفتوى
-        use_markdown: استخدام تنسيق Markdown (افتراضي: False لتجنب أخطاء parsing)
-    """
+    """تنسيق محتوى الفتوى الكامل - بدون روابط نصية"""
     fatwa_id_val = fatwa.get('fatwa_number', fatwa.get('id'))
+    
+    title = fatwa.get('title', '')
+    scholar = fatwa.get('scholar_name', '')
+    question = fatwa.get('question', '')
+    answer = fatwa.get('answer', '')
+    source_name = fatwa.get('source_name', '')
+    source_title = fatwa.get('source_title', '')
+
+    if use_markdown:
+        title = escape_markdown(title)
+        scholar = escape_markdown(scholar)
+        question = escape_markdown(question)
+        answer = escape_markdown(answer)
+        source_name = escape_markdown(source_name)
+        source_title = escape_markdown(source_title)
 
     if use_markdown:
         content = f"🔢 رقم الفتوى: {fatwa_id_val}\n"
-        if fatwa.get('scholar_name'):
-            content += f"👤 المفتي: {fatwa['scholar_name']}\n"
-        content += f"📝 العنوان: {fatwa['title']}\n"
-
+        if scholar:
+            content += f"👤 المفتي: *{scholar}*\n"
+        content += f"📝 العنوان: **{title}**\n"
         content += f"──────────────\n\n"
-
-        if fatwa.get('question'):
-            content += f"❓ السؤال:\n{fatwa['question']}\n\n"
-
-        content += f"💡 الجواب:\n{fatwa['answer']}\n\n"
+        if question:
+            content += f"❓ السؤال:\n{question}\n\n"
+        content += f"💡 الجواب:\n{answer}\n\n"
         content += f"──────────────\n"
     else:
-        # نسخة بدون markdown لتجنب أخطاء parsing
         content = f"🔢 رقم الفتوى: {fatwa_id_val}\n"
-        if fatwa.get('scholar_name'):
-            content += f"👤 المفتي: {fatwa['scholar_name']}\n"
-        content += f"📝 العنوان: {fatwa['title']}\n"
-
+        if scholar:
+            content += f"👤 المفتي: {scholar}\n"
+        content += f"📝 العنوان: {title}\n"
+        content += f"──────────────\n\n"
+        if question:
+            content += f"❓ السؤال:\n{question}\n\n"
+        content += f"💡 الجواب:\n{answer}\n\n"
         content += f"──────────────\n\n"
 
-        if fatwa.get('question'):
-            content += f"❓ السؤال:\n{fatwa['question']}\n\n"
-
-        content += f"💡 الجواب:\n{fatwa['answer']}\n\n"
-        content += f"──────────────\n\n"
-
-    # المصدر (فقط بدون روابط نصية) - تم تقديمه قبل التصنيف
-    if fatwa.get('source_name'):
-        source_line = f"📚 المصدر: {fatwa['source_name']}"
-        if fatwa.get('source_title'):
-            source_line += f" — {fatwa['source_title']}"
+    if source_name:
+        source_line = f"📚 المصدر: {source_name}"
+        if source_title:
+            source_line += f" — {source_title}"
         content += source_line + "\n"
 
     content += "\n"

@@ -745,9 +745,7 @@ class FatwasMixin:
                 conn = await self.get_connection()
                 async with conn.execute("SELECT id, fatwa_number, title, status FROM fatwas WHERE normalized_answer = NORMALIZE_TEXT(?) AND normalized_answer IS NOT NULL AND TRIM(normalized_answer) != '' ORDER BY id DESC LIMIT ?", (answer_text, int(limit))) as cursor:
                     rows = await cursor.fetchall()
-                if not rows:
-                    async with conn.execute("SELECT id, fatwa_number, title, status FROM fatwas WHERE answer IS NOT NULL AND TRIM(answer) != '' AND NORMALIZE_TEXT(answer) = NORMALIZE_TEXT(?) ORDER BY id DESC LIMIT ?", (answer_text, int(limit))) as cursor:
-                        rows = await cursor.fetchall()
+                # Removed slow fallback to avoid full table scan
                 return [{'id': r['id'], 'fatwa_number': r['fatwa_number'], 'title': r['title'], 'status': r['status']} for r in rows]
             finally:
                 if conn: await conn.close()

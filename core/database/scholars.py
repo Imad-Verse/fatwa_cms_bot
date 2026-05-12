@@ -91,21 +91,28 @@ class ScholarsMixin:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)
 
-    async def add_scholar(self, name: str) -> int:
-        """Add a new scholar or return ID if exists."""
+    async def add_scholar(self, name: str) -> Optional[int]:
+        """
+        Add a new scholar.
+        Returns:
+            int: The ID of the NEWLY created scholar.
+            None: If the scholar already exists (based on NORMALIZE_TEXT).
+        """
         async def _add():
             conn = None
             try:
                 conn = await self.get_connection()
-                async with conn.execute("SELECT id FROM scholars WHERE name = ?", (name,)) as cursor:
+                # التحقق من الوجود باستخدام التطبيع (تجاهل الهمزات والتشكيل)
+                async with conn.execute("SELECT id FROM scholars WHERE NORMALIZE_TEXT(name) = NORMALIZE_TEXT(?)", (name,)) as cursor:
                     row = await cursor.fetchone()
                     if row:
-                        return row["id"]
+                        return None # يشير إلى أن العالم موجود مسبقاً
+                
                 await conn.execute("INSERT INTO scholars (name) VALUES (?)", (name,))
                 await conn.commit()
                 # إبطال كاش القوائم
                 cache.delete_pattern("get_scholars")
-                # To get lastrowid in aiosqlite, we might need a cursor
+                
                 async with conn.execute("SELECT last_insert_rowid()") as cursor:
                     row = await cursor.fetchone()
                     return row[0]

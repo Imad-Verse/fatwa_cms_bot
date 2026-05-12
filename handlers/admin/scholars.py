@@ -52,54 +52,108 @@ async def manage_scholars_panel(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def show_scholars_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض قائمة العلماء في لوحة الإدارة"""
+    """عرض قائمة العلماء في لوحة الإدارة مع دعم البحث"""
     query = update.callback_query
-    await query.answer()
-    if not await bot_db.is_admin(update.effective_user.id):
-        await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
+    if query: await query.answer()
+
+    user_id = update.effective_user.id
+    if not await bot_db.is_admin(user_id):
+        if query: await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
         return
 
-
+    # استخراج رقم الصفحة والبحث من callback_data أو user_data
     page = 0
-    data = query.data
-    if "scholars_list_" in data:
-        page = int(data.split("_")[-1])
+    search_query = context.user_data.get('admin_scholar_search')
+
+    if query and query.data:
+        data = query.data
+        if "scholars_list_" in data:
+            parts = data.split("_")
+            page = int(parts[-1])
+        elif data == "clear_admin_schol_search":
+            context.user_data.pop('admin_scholar_search', None)
+            search_query = None
+            page = 0
 
     ITEMS_PER_PAGE = 10
     offset = page * ITEMS_PER_PAGE
 
-    scholars = await db.get_scholars_with_ids(limit=ITEMS_PER_PAGE, offset=offset)
-    total_count = await db.get_scholars_count()
+    scholars = await db.get_scholars_with_ids(limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query)
+    total_count = await db.get_scholars_count(search_query=search_query)
 
     if not scholars and page == 0:
-        await query.edit_message_text(
-            "📭 لا يوجد علماء مضافين حالياً.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")]])
-        )
+        msg = "📭 لا يوجد علماء مضافين حالياً." if not search_query else f"🔍 لا توجد نتائج للبحث عن: '{search_query}'"
+        keyboard = []
+        if search_query:
+            keyboard.append([InlineKeyboardButton("❌ مسح البحث", callback_data="clear_admin_schol_search")])
+        keyboard.append([InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")])
+        
+        if query:
+            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+        else:
+            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
-    text = f"👤 **إدارة العلماء** (صفحة {page + 1})\nإجمالي العلماء: {total_count}\n\n"
-    keyboard = []
-
-    # Navigation Buttons (Top)
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"scholars_list_{page-1}"))
-    if offset + ITEMS_PER_PAGE < total_count:
-        nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"scholars_list_{page+1}"))
+    text = f"👤 **إدارة العلماء**\n"
+    if search_query:
+        text += f"🔍 نتائج البحث عن: `{search_query}`\n"
+    text += f"صفحة {page + 1} | إجمالي: {total_count}\n\n"
     
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-
+    keyboard = []
+    
+    # قائمة العلماء
     for s in scholars:
         keyboard.append([InlineKeyboardButton(s['name'], callback_data=f"scholar_view_{s['id']}")])
 
-    if nav_buttons:
-        keyboard.append(nav_buttons)
+    # أزرار التنقل
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"scholars_list_{page-1}"))
+    if offset + ITEMS_PER_PAGE < total_count:
+        nav_row.append(InlineKeyboardButton("➡️ التالي", callback_data=f"scholars_list_{page+1}"))
+    if nav_row:
+        keyboard.append(nav_row)
 
-    keyboard.append([InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")])
+    # أزرار البحث والتحكم
+    keyboard.append([
+        InlineKeyboardButton("🔍 بحث باسم العالم", callback_data="admin_schol_search_start"),
+        InlineKeyboardButton("➕ إضافة عالم", callback_data="scholar_add_start")
+    ])
+    
+    if search_query:
+        keyboard.append([InlineKeyboardButton("❌ مسح البحث", callback_data="clear_admin_schol_search")])
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    keyboard.append([InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="admin_panel")])
+
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def start_search_schol_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """بدء البحث عن عالم"""
+    query = update.callback_query
+    await query.answer()
+    
+    await query.edit_message_text(
+        "🔍 **البحث عن عالم**\n\nأرسل اسم العالم (أو جزء منه):",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للقائمة", callback_data="scholars_list_0")]]),
+        parse_mode='Markdown'
+    )
+    return BotState.STATE_ADMIN_SEARCH_SCHOLAR
+
+
+async def handle_scholar_search_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """استلام كلمة البحث"""
+    query_text = update.message.text.strip()
+    if not query_text:
+        await update.message.reply_text("⚠️ يرجى إرسال نص للبحث.")
+        return BotState.STATE_ADMIN_SEARCH_SCHOLAR
+    
+    context.user_data['admin_scholar_search'] = query_text
+    await show_scholars_admin(update, context)
+    return ConversationHandler.END
 
 
 async def view_scholar_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -177,14 +231,18 @@ async def receive_new_scholar_admin(update: Update, context: ContextTypes.DEFAUL
     if scholar_id:
         safe_name = escape_markdown(name)
         await update.message.reply_text(
-            f"✅ تم إضافة العالم: *{safe_name}*",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="scholars_list_0")]]),
+            f"✅ تم إضافة العالم بنجاح: *{safe_name}*",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✏️ إضافة سيرة ذاتية", callback_data=f"scholar_bio_{scholar_id}")],
+                [InlineKeyboardButton("🔙 إدارة العلماء", callback_data="scholars_list_0")]
+            ]),
             parse_mode='Markdown'
         )
     else:
+        # هنا scholar_id هو None، مما يعني أنه موجود مسبقاً بناءً على التعديل الجديد في add_scholar
         await update.message.reply_text(
-            "⚠️ عذراً، هذا العالم موجود بالفعل.",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")]])
+            "⚠️ هذا العالم موجود مسبقاً في النظام.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="scholars_list_0")]])
         )
     return ConversationHandler.END
 
@@ -276,16 +334,19 @@ async def receive_scholar_website(update: Update, context: ContextTypes.DEFAULT_
 scholar_conv = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(start_add_scholar_admin, pattern='^scholar_add_start$'),
-        CallbackQueryHandler(start_add_scholar_bio, pattern='^scholar_bio_')
+        CallbackQueryHandler(start_add_scholar_bio, pattern='^scholar_bio_'),
+        CallbackQueryHandler(start_search_schol_admin, pattern='^admin_schol_search_start$')
     ],
     states={
         BotState.STATE_SCHOLAR_ADD: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_new_scholar_admin)],
         BotState.STATE_SCHOLAR_BIO: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_bio)],
         BotState.STATE_SCHOLAR_BIO_CONFIRM: [CallbackQueryHandler(confirm_scholar_bio, pattern='^scholar_bio_done$')],
-        BotState.STATE_SCHOLAR_WEBSITE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_website)]
+        BotState.STATE_SCHOLAR_WEBSITE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_scholar_website)],
+        BotState.STATE_ADMIN_SEARCH_SCHOLAR: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_scholar_search_admin)]
     },
     fallbacks=[
         CallbackQueryHandler(manage_scholars_panel, pattern='^manage_scholars$'),
+        CallbackQueryHandler(show_scholars_admin, pattern='^scholars_list'),
         CallbackQueryHandler(view_scholar_admin, pattern='^scholar_view_')
     ]
 )

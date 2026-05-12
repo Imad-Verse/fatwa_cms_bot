@@ -141,6 +141,10 @@ async def receive_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BotState.STATE_FATWA_TEXT
 
 async def receive_fatwa_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        await update.message.reply_text("⚠️ يرجى إرسال نص الفتوى كرسالة نصية.")
+        return BotState.STATE_FATWA_TEXT
+    
     text = update.message.text
     if contains_url(text):
         await update.message.reply_text("⚠️ نص الفتوى لا تقبل الروابط. الرجاء إرسال النص فقط.", reply_markup=_fatwa_text_nav_keyboard())
@@ -157,7 +161,13 @@ async def confirm_fatwa_text(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await query.answer("⚠️ أرسل نص الفتوى أولاً.", show_alert=True)
         return BotState.STATE_FATWA_TEXT
     answer_text = "\n".join(parts).strip()
+    
+    import time
+    start_time = time.perf_counter()
     duplicates = await db.find_fatwas_by_exact_answer(answer_text, limit=3)
+    duration = time.perf_counter() - start_time
+    logger.info(f"Duplicate check for fatwa text took {duration:.4f}s")
+
     if duplicates:
         first_dup = duplicates[0]; fatwa_number = first_dup.get('fatwa_number') or first_dup.get('id')
         title = first_dup.get('title') or "بدون عنوان"; extra_count = max(0, len(duplicates) - 1)
@@ -463,7 +473,7 @@ add_fatwa_conv = ConversationHandler(
         BotState.STATE_QUESTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_question), CallbackQueryHandler(handle_back_step, pattern="^back_step$")],
         BotState.STATE_FATWA_TEXT: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, receive_fatwa_text),
-            CallbackQueryHandler(confirm_fatwa_text, pattern="^fatwa_text_done$"),
+            CallbackQueryHandler(confirm_fatwa_text, pattern="^confirm_fatwa_text$"),
             CallbackQueryHandler(handle_duplicate_fatwa_choice, pattern="^(dup_continue_add|dup_cancel_add)$"),
             CallbackQueryHandler(handle_back_step, pattern="^back_step$")
         ],

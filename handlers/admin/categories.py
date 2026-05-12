@@ -31,13 +31,22 @@ bot_db = BotDatabaseManager()
 async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض قائمة التصنيفات: شبكة ثنائية، 10 عناصر، بحث"""
     query = update.callback_query
-    await query.answer()
+    if query: await query.answer()
+
+    # التحقق من الصلاحيات
+    user_id = update.effective_user.id
+    if not await bot_db.is_admin(user_id):
+        if query: await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
+        return
 
     # استخراج رقم الصفحة
     page = 0
-    data = query.data
+    data = query.data if query else ""
     if "page_" in data:
-        page = int(data.split("page_")[-1])
+        try:
+            page = int(data.split("page_")[-1])
+        except ValueError:
+            page = 0
 
     ITEMS_PER_PAGE = 10
     offset = page * ITEMS_PER_PAGE
@@ -47,8 +56,15 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cat_type = context.user_data.get('admin_cat_type') # 'fiqh', 'topic', or None (All)
 
     # جلب البيانات
-    categories = await db.get_categories(limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query, category_type=cat_type)
-    total_count = await db.get_categories_count(search_query=search_query, category_type=cat_type)
+    try:
+        categories = await db.get_categories(limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query, category_type=cat_type)
+        total_count = await db.get_categories_count(search_query=search_query, category_type=cat_type)
+    except Exception as e:
+        logger.error(f"Error fetching categories: {e}")
+        error_msg = "❌ حدث خطأ أثناء تحميل التصنيفات."
+        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        return
 
     # بناء الأزرار
     keyboard = []
@@ -77,7 +93,7 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
     keyboard.append(add_row)
 
-    # Navigation Row (Top)
+    # Navigation Row (Shared)
     nav_row = []
     if page > 0:
         nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"manage_categories_page_{page-1}"))
@@ -92,6 +108,7 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
         grid_rows = []
         row = []
         for cat_id, name in categories:
+            safe_name = escape_markdown(name)
             btn = InlineKeyboardButton(f"📂 {name}", callback_data=f"view_topics_cat_{cat_id}")
             row.append(btn)
             if len(row) == 2:
@@ -101,24 +118,25 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
             grid_rows.append(row)
 
         keyboard.extend(grid_rows)
+        if nav_row:
+            keyboard.append(nav_row)
     else:
-        keyboard.append([InlineKeyboardButton("🚫 لا توجد تصنيفات", callback_data="noop")])
-
-    # Navigation Row (Bottom)
-    if nav_row:
-        keyboard.append(nav_row)
+        keyboard.append([InlineKeyboardButton("🚫 لا توجد تصنيفات مطابقة", callback_data="noop")])
 
     # أزرار التحكم السفلية
-    keyboard.append([InlineKeyboardButton("🔙 رجوع للوحة", callback_data="admin_panel")])
+    keyboard.append([InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")])
 
     type_label = ""
     if cat_type == 'fiqh': type_label = " (فقهي)"
     elif cat_type == 'topic': type_label = " (موضوعي)"
 
-    title_suffix = f" {type_label}" + (f" (بحث: {search_query})" if search_query else "")
+    title_suffix = f" {type_label}" + (f" (بحث: {escape_markdown(search_query)})" if search_query else "")
     text = f"🏷️ **إدارة التصنيفات** (صفحة {page + 1}){title_suffix}\nإجمالي التصنيفات: {total_count}"
 
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return ConversationHandler.END
 
 
@@ -299,8 +317,9 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         total_count = await db.get_topics_count(cat_id)
 
         # نحتاج اسم التصنيف للعرض
-        all_cats = dict(await db.get_categories())
-        cat_name = all_cats.get(cat_id, "غير معروف")
+        category = await db.get_category(cat_id)
+        cat_name = category['name'] if category else "غير معروف"
+        safe_cat_name = escape_markdown(cat_name)
 
         keyboard = []
 
@@ -312,7 +331,7 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard.append(action_row)
         keyboard.append([InlineKeyboardButton("🗑️ حذف التصنيف", callback_data=f"confirm_delete_category_{cat_id}")])
 
-        # Navigation Buttons (Shared for Top and Bottom)
+        # Navigation Buttons (Shared)
         nav_row = []
         if page > 0:
             nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"view_topics_cat_{cat_id}_page_{page-1}"))
@@ -336,17 +355,15 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
             if row:
                 grid_rows.append(row)
             keyboard.extend(grid_rows)
+            if nav_row:
+                keyboard.append(nav_row)
         else:
             keyboard.append([InlineKeyboardButton("🚫 لا توجد مواضيع", callback_data="noop")])
-
-        # Bottom Navigation
-        if nav_row:
-            keyboard.append(nav_row)
 
         keyboard.append([InlineKeyboardButton("🔙 رجوع للتصنيفات", callback_data="manage_categories")])
 
         await query.edit_message_text(
-            f"📂 **المواضيع في: {cat_name}**\n(صفحة {page + 1} - المجموع {total_count})",
+            f"📂 **المواضيع في: {safe_cat_name}**\n(صفحة {page + 1} - المجموع {total_count})",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
         )

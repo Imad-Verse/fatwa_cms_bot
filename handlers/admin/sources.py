@@ -30,18 +30,70 @@ bot_db = BotDatabaseManager()
 async def manage_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض قائمة المصادر مع Pagination"""
     query = update.callback_query
-    await query.answer()
+    if query: await query.answer()
+
+    # التحقق من الصلاحيات
+    user_id = update.effective_user.id
+    if not await bot_db.is_admin(user_id):
+        if query: await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
+        return
 
     page = 0
-    data = query.data
+    data = query.data if query else ""
     if "manage_sources_page_" in data:
-        page = int(data.split("manage_sources_page_")[-1])
+        try:
+            page = int(data.split("manage_sources_page_")[-1])
+        except ValueError:
+            page = 0
 
     ITEMS_PER_PAGE = 10
     offset = page * ITEMS_PER_PAGE
 
-    sources = await db.get_sources(limit=ITEMS_PER_PAGE, offset=offset)
-    total_count = await db.get_sources_count()
+    try:
+        sources = await db.get_sources(limit=ITEMS_PER_PAGE, offset=offset)
+        total_count = await db.get_sources_count()
+    except Exception as e:
+        logger.error(f"Error fetching sources: {e}")
+        error_msg = "❌ حدث خطأ أثناء تحميل المصادر."
+        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        return
+
+    keyboard = []
+    keyboard.append([InlineKeyboardButton("➕ إضافة مصدر", callback_data="add_source")])
+
+    if sources:
+        row = []
+        for s_id, s_name in sources:
+             name = s_name
+             row.append(InlineKeyboardButton(f"📚 {name}", callback_data=f"manage_source_{s_id}"))
+             if len(row) == 2:
+                  keyboard.append(row)
+                  row = []
+        if row:
+            keyboard.append(row)
+    else:
+        keyboard.append([InlineKeyboardButton("❌ لا توجد مصادر حالياً", callback_data="manage_sources")])
+
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"manage_sources_page_{page-1}"))
+    if offset + ITEMS_PER_PAGE < total_count:
+        nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"manage_sources_page_{page+1}"))
+    if nav_buttons:
+        keyboard.append(nav_buttons)
+
+    keyboard.append([InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")])
+
+    text = f"📚 **إدارة المصادر** (صفحة {page + 1})\nإجمالي المصادر: {total_count}\n\nاختر مصدرًا لإدارته:"
+
+    if query:
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    else:
+        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+
+async def manage_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     keyboard = []
     keyboard.append([InlineKeyboardButton("➕ إضافة مصدر", callback_data="add_source")])
