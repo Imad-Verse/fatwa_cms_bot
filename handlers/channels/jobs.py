@@ -19,8 +19,19 @@ logger = logging.getLogger(__name__)
 db = FatwaDatabaseManager()
 bot_db = BotDatabaseManager()
 
-async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = False, respect_scheduled: bool = True, trigger_admin_id: int = None):
-    """مهمة النشر اليومي أو النشر الفوري اليدوي."""
+async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = None, respect_scheduled: bool = None, trigger_admin_id: int = None):
+    """مهمة النشر اليومي أو النشر الفوري المجدول."""
+    # 1. استخراج البيانات إذا كان الاستدعاء من JobQueue
+    if context.job and isinstance(context.job.data, dict):
+        jd = context.job.data
+        if force is None: force = jd.get('force', False)
+        if respect_scheduled is None: respect_scheduled = jd.get('respect_scheduled', True)
+        if trigger_admin_id is None: trigger_admin_id = jd.get('trigger_admin_id')
+    
+    # 2. القيم الافتراضية إذا لم تحدد
+    if force is None: force = False
+    if respect_scheduled is None: respect_scheduled = True
+
     random_enabled = await bot_db.get_setting('auto_publish', '0') == '1'
     specific_enabled = await bot_db.get_setting('auto_publish_specific', '0') == '1'
     maintenance_enabled = await bot_db.get_setting('maintenance_mode', '0') == '1'
@@ -63,8 +74,13 @@ async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = Fals
                 _register_delivery_message(context, fatwa['id'], ch['chat_id'], sent_msg.message_id); sent_to.add(ch['chat_id']); count_ch += 1
                 await asyncio.sleep(0.05) # Delay
             except Exception as e:
-                logger.error(f"Failed to auto-publish to {ch['chat_id']}: {e}")
-                if "Forbidden" in str(e) or "chat not found" in str(e).lower(): await bot_db.update_channel_status(ch['chat_id'], 'inactive')
+                err_msg = str(e).lower()
+                is_cleanup = any(x in err_msg for x in ("forbidden", "chat not found", "deactivated", "bot was blocked"))
+                if is_cleanup:
+                    await bot_db.update_channel_status(ch['chat_id'], 'inactive')
+                    logger.info(f"Deactivated channel {ch['chat_id']} due to error: {e}")
+                else:
+                    logger.error(f"Failed to auto-publish to channel {ch['chat_id']}: {e}")
 
         if count_ch > 0: await db.increment_views_by(fatwa['id'], count_ch)
         users = [] if maintenance_enabled else list(dict.fromkeys(await bot_db.get_active_user_ids()))
@@ -78,7 +94,9 @@ async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = Fals
                 err_str = str(e).lower()
                 if any(x in err_str for x in ("forbidden", "blocked", "deactivated", "chat not found")):
                     await bot_db.set_user_blocked(uid, True)
-                logger.debug(f"Failed to send daily fatwa to user {uid}: {e}")
+                    logger.info(f"Marked user {uid} as blocked.")
+                else:
+                    logger.debug(f"Failed to send daily fatwa to user {uid}: {e}")
 
         admins_to_notify = []
         if maintenance_enabled:
@@ -96,7 +114,7 @@ async def daily_fatwa_job(context: ContextTypes.DEFAULT_TYPE, force: bool = Fals
                 sent_msg = await context.bot.send_message(chat_id=aid, text=text, reply_markup=markup)
                 _register_delivery_message(context, fatwa['id'], aid, sent_msg.message_id); sent_to.add(aid); count_ad += 1
             except Exception as e:
-                logger.error(f"Failed to notify admin {admin.get('user_id')}: {e}")
+                logger.warning(f"Failed to notify admin {admin.get('user_id')}: {e}")
 
         total = count_ch + count_us + count_ad
         report = (f"{'🛠️' if maintenance_enabled else '✅'} **تقرير النشر التلقائي اليومي**\n\n"
