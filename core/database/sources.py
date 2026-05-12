@@ -15,6 +15,8 @@ class SourcesMixin:
         if row:
             return row["id"]
         await cursor.execute("INSERT INTO sources (name) VALUES (?)", (name,))
+        from core.utils import cache
+        cache.delete_pattern("get_sources")
         return cursor.lastrowid
 
     async def _get_or_create_source_title_id(self, cursor, source_name: str, title: str, source_url: str = None, audio_url: str = None) -> Optional[int]:
@@ -32,6 +34,8 @@ class SourcesMixin:
             "INSERT INTO source_titles (source_id, title, source_url, audio_url) VALUES (?, ?, ?, ?)",
             (source_id, title, source_url, audio_url)
         )
+        from core.utils import cache
+        cache.delete_pattern("get_sources") # Invalidate because sources often list titles or counts
         return cursor.lastrowid
 
     @cached_async(ttl=600)
@@ -132,6 +136,8 @@ class SourcesMixin:
                         return row["id"]
                 await conn.execute("INSERT INTO sources (name) VALUES (?)", (name,))
                 await conn.commit()
+                from core.utils import cache
+                cache.delete_pattern("get_sources")
                 async with conn.execute("SELECT last_insert_rowid()") as cursor:
                     row = await cursor.fetchone()
                     return row[0]

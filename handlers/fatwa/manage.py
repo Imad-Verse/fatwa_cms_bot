@@ -6,7 +6,10 @@ from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
 from core.utils import (
     format_fatwa_content,
-    back_to_main_keyboard as kb_back_main
+    back_to_main_keyboard as kb_back_main,
+    split_long_message,
+    safe_edit_message_text,
+    safe_reply_text
 )
 from .utils import _DELIVERY_LOG_KEY
 
@@ -55,7 +58,15 @@ async def publish_fatwa(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fatwa = await db.get_fatwa(fatwa_id)
     text = format_fatwa_content(fatwa)
     keyboard = [[InlineKeyboardButton("✏️ تعديل", callback_data=f"edit_fatwa_{fatwa_id}"), InlineKeyboardButton("🗑️ حذف", callback_data=f"confirm_delete_{fatwa_id}")], [InlineKeyboardButton("📢 إرسال الفتوى", callback_data=f"broadcast_{fatwa_id}")], [InlineKeyboardButton("📋 نسخ النص", callback_data=f"copy_full_{fatwa_id}"), InlineKeyboardButton("🏠 القائمة الرئيسية", callback_data="back_main")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    markup = InlineKeyboardMarkup(keyboard)
+    
+    parts = split_long_message(text)
+    for i, part in enumerate(parts):
+        is_last = (i == len(parts) - 1)
+        if i == 0:
+            await safe_edit_message_text(query, part, reply_markup=markup if is_last else None)
+        else:
+            await safe_reply_text(query.message, part, reply_markup=markup if is_last else None)
 
 async def delete_fatwa_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query; fatwa_id = int(query.data.split('_')[2])

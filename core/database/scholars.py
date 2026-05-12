@@ -14,6 +14,9 @@ class ScholarsMixin:
         if row:
             return row["id"]
         await cursor.execute("INSERT INTO scholars (name) VALUES (?)", (scholar_name,))
+        from core.utils import cache
+        cache.delete_pattern("get_scholars")
+        cache.delete_pattern("get_scholars_with_ids")
         return cursor.lastrowid
 
     @cached_async(ttl=600)
@@ -113,6 +116,7 @@ class ScholarsMixin:
                 await conn.commit()
                 # إبطال كاش القوائم
                 cache.delete_pattern("get_scholars")
+                cache.delete_pattern("get_scholars_with_ids")
                 
                 async with conn.execute("SELECT last_insert_rowid()") as cursor:
                     row = await cursor.fetchone()
@@ -134,6 +138,7 @@ class ScholarsMixin:
                     await conn.commit()
                     # إبطال كاش العالم والقوائم
                     cache.delete_pattern("get_scholars")
+                    cache.delete_pattern("get_scholars_with_ids")
                     cache.delete_pattern(f"get_scholar_by_id:({self}, {scholar_id})")
                     return cursor.rowcount > 0
             finally:
