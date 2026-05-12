@@ -431,8 +431,8 @@ class BotDatabaseManager(DatabaseBase):
                 conn = await self.get_connection()
                 await conn.execute("INSERT INTO admins (user_id, username) VALUES (?, ?)", (user_id, username))
                 await conn.commit()
-                # إبطال الكاش
-                cache.delete(f"is_admin:({self}, {user_id}):{{}}")
+                # إبطال الكاش الخاص بالمسؤولين
+                cache.delete_pattern("is_admin")
                 return True
             except aiosqlite.IntegrityError:
                 return False
@@ -465,8 +465,8 @@ class BotDatabaseManager(DatabaseBase):
                 conn = await self.get_connection()
                 await conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, value))
                 await conn.commit()
-                # إبطال الكاش الخاص بهذا المفتاح
-                cache.delete(f"get_setting:({self}, '{key}'):{{}}")
+                # إبطال الكاش الخاص بهذه الإعدادات (نمسح الكل لضمان الموثوقية أو نمسح بالنمط)
+                cache.delete_pattern(f"get_setting") 
                 return True
             except Exception as e:
                 logger.error(f"Error setting value: {e}")
@@ -697,3 +697,23 @@ class BotDatabaseManager(DatabaseBase):
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_stats)
+
+    async def get_active_entity_counts(self) -> Dict[str, int]:
+        """Fetch counts of active channels and groups separately."""
+        async def _counts():
+            conn = None
+            try:
+                conn = await self.get_connection()
+                sql = """
+                    SELECT 
+                        (SELECT COUNT(*) FROM channels WHERE type='channel' AND status='active') as channels,
+                        (SELECT COUNT(*) FROM channels WHERE (type='group' OR type='supergroup') AND status='active') as groups
+                """
+                async with conn.execute(sql) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        return {"channels": row["channels"], "groups": row["groups"]}
+                    return {"channels": 0, "groups": 0}
+            finally:
+                if conn: await conn.close()
+        return await self.execute_with_retry(_counts)

@@ -11,9 +11,10 @@ from .jobs import daily_fatwa_job
 logger = logging.getLogger(__name__)
 
 async def force_publish_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """نشر فتوى فوراً"""
+    """نشر فتوى فوراً (يدوياً)"""
     query = update.callback_query; await query.answer("جاري النشر...")
     if not await _ensure_admin(update, query): return
-    await daily_fatwa_job(context, force=True, respect_scheduled=False)
+    # جعلنا respect_scheduled=True لنشر الفتوى المجدولة فوراً إذا وجدت
+    await daily_fatwa_job(context, force=True, respect_scheduled=True, trigger_admin_id=update.effective_user.id)
     await auto_publish_panel(update, context)
 

@@ -261,12 +261,25 @@ class CategoriesMixin:
         return await self.execute_with_retry(_get)
 
     @cached_async(ttl=600)
-    async def get_topics_by_category(self, category_id: int, limit: int = None, offset: int = 0, search_query: str = None) -> List[Tuple[int, str]]:
-        """Retrieve topics within a specific category."""
+    async def get_topics_by_category(self, category_id: int, limit: int = None, offset: int = 0, search_query: str = None) -> Tuple[List[Dict], int]:
+        """Retrieve topics within a specific category and their total count."""
         async def _get():
             conn = None
             try:
                 conn = await self.get_connection()
+                
+                # Count total topics for this category
+                count_sql = "SELECT COUNT(*) FROM topics WHERE category_id = ?"
+                count_params = [category_id]
+                if search_query:
+                    count_sql += " AND REMOVE_TASHKEEL(name) LIKE ?"
+                    count_params.append(f"%{search_query}%")
+                
+                async with conn.execute(count_sql, count_params) as cursor:
+                    row = await cursor.fetchone()
+                    total = row[0] if row else 0
+
+                # Fetch the topics
                 sql = "SELECT id, name FROM topics WHERE category_id = ?"
                 params = [category_id]
                 if search_query:
@@ -276,8 +289,11 @@ class CategoriesMixin:
                 if limit:
                     sql += " LIMIT ? OFFSET ?"
                     params.extend([limit, offset])
+                
                 async with conn.execute(sql, params) as cursor:
-                    return [(r['id'], r['name']) for r in await cursor.fetchall()]
+                    results = [dict(r) for r in await cursor.fetchall()]
+                    
+                return results, total
             finally:
                 if conn: await conn.close()
         return await self.execute_with_retry(_get)

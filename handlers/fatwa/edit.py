@@ -165,13 +165,15 @@ async def show_edit_topics_step(update, context, cat_id=None, page=0, search_que
     cat_name = cat_row['name'] if cat_row else "غير محدد"
     if search_query is None: search_query = context.user_data.get(f'edit_topic_search_{cat_id}')
     else: context.user_data[f'edit_topic_search_{cat_id}'] = search_query
-    topics = await db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query)
-    total_count = await db.get_topics_count(cat_id, search_query=search_query); slot = context.user_data.get('edit_taxonomy_slot', 1); fatwa_id = context.user_data.get('edit_fatwa_id')
+    topics, total_count = await db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query)
+    slot = context.user_data.get('edit_taxonomy_slot', 1); fatwa_id = context.user_data.get('edit_fatwa_id')
     fatwa = await db.get_fatwa(fatwa_id); current_topics = []
     for cls in fatwa.get('classifications', []):
         if cls['slot_index'] == slot and cls['category_id'] == cat_id: current_topics = cls.get('topic_ids', []); break
     kb = []
-    for tid, name in topics: kb.append(InlineKeyboardButton(f"✅ {name}" if tid in current_topics else name, callback_data=f"edit_toggle_top_{tid}"))
+    for topic in topics:
+        tid, name = topic['id'], topic['name']
+        kb.append(InlineKeyboardButton(f"✅ {name}" if tid in current_topics else name, callback_data=f"edit_toggle_top_{tid}"))
     keyboard = _pair_buttons(kb)
     nav_row = []
     if page > 0: nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"edit_top_page_{page-1}"))

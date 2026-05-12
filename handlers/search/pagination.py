@@ -55,7 +55,11 @@ async def display_search_results(update, context, results, title, total_count, i
     keyboard.append([InlineKeyboardButton(back_label or "🔙 رجوع", callback_data=back_callback)])
 
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
+    
+    if is_callback:
+        await safe_edit_message_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
 
 @callback_guard(1.5)
 async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,7 +108,7 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
         db = FatwaDatabaseManager()
         results, total_count = await db.search_fatwas(category_id=params.get('cat_id'), topic_id=params.get('topic_id'), public_only=params['public'], limit=limit, offset=offset)
         title = f"فتاوى تصنيف: {params.get('cat_name')}"
-        back_callback = f"view_topics_{params.get('cat_id')}" if params.get('topic_id') else "search_category"
+        back_callback = f"sel_cat_{params.get('cat_id')}" if params.get('topic_id') else "search_category"
     elif stype == 'source':
         from core.database import FatwaDatabaseManager
         db = FatwaDatabaseManager()
@@ -129,6 +133,6 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
     elif stype == 'ai':
         results, total_count = await _fetch_ai_text_fatwas(params.get('terms'), params.get('user_query'), params.get('public', True), limit, offset, max_total=params.get('cap'))
         title = "نتائج البحث الذكي"
-        back_callback = "search_ai"
+        back_callback = "search_fatwas"
 
     await display_search_results(update, context, results, title, total_count, is_callback=True, page=page, back_callback=back_callback, back_label=back_label)

@@ -17,7 +17,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 from handlers.admin.panel import admin_panel
@@ -62,8 +63,8 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error fetching categories: {e}")
         error_msg = "❌ حدث خطأ أثناء تحميل التصنيفات."
-        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
-        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await safe_reply_text(update, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
         return
 
     # بناء الأزرار
@@ -134,9 +135,9 @@ async def manage_categories(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"🏷️ **إدارة التصنيفات** (صفحة {page + 1}){title_suffix}\nإجمالي التصنيفات: {total_count}"
 
     if query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return ConversationHandler.END
 
 
@@ -151,7 +152,8 @@ async def start_add_category_admin(update: Update, context: ContextTypes.DEFAULT
         context.user_data['temp_cat_type'] = 'fiqh'
         label = "الفقهي"
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"🏷️ أرسل اسم التصنيف **{label}** الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="manage_categories")]])
     )
@@ -193,7 +195,8 @@ async def receive_new_category(update: Update, context: ContextTypes.DEFAULT_TYP
 async def start_search_category_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "🔍 **بحث في التصنيفات**\nأرسل اسم التصنيف للبحث عنه:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data="manage_categories")]])
     )
@@ -219,7 +222,8 @@ async def start_edit_category_name(update: Update, context: ContextTypes.DEFAULT
     cat_id = int(query.data.split('edit_category_')[-1])
     context.user_data['edit_category_id'] = cat_id
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "📝 **تعديل اسم التصنيف**\nأرسل الاسم الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"view_topics_cat_{cat_id}")]])
     )
@@ -273,7 +277,7 @@ async def start_add_topic_admin(update: Update, context: ContextTypes.DEFAULT_TY
     cat_id = int(query.data.split('_cat_')[-1])
     context.user_data['add_topic_cat_id'] = cat_id
 
-    await query.edit_message_text("أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"view_topics_cat_{cat_id}")]]))
+    await safe_edit_message_text(query, "أرسل اسم الموضوع الجديد:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"view_topics_cat_{cat_id}")]]))
     return BotState.STATE_TOPIC_ADD
 
 async def receive_new_topic(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -313,8 +317,7 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         ITEMS_PER_PAGE = 10
         offset = page * ITEMS_PER_PAGE
 
-        topics = await db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset)
-        total_count = await db.get_topics_count(cat_id)
+        topics, total_count = await db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset)
 
         # نحتاج اسم التصنيف للعرض
         category = await db.get_category(cat_id)
@@ -345,7 +348,9 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
         if topics:
             grid_rows = []
             row = []
-            for tid, name in topics:
+            for topic in topics:
+                tid = topic['id']
+                name = topic['name']
                 # جعل المواضيع قابلة للضغط للإدارة
                 btn = InlineKeyboardButton(f"• {name}", callback_data=f"manage_topic_{tid}")
                 row.append(btn)
@@ -362,7 +367,8 @@ async def view_topics_handler(update: Update, context: ContextTypes.DEFAULT_TYPE
 
         keyboard.append([InlineKeyboardButton("🔙 رجوع للتصنيفات", callback_data="manage_categories")])
 
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             f"📂 **المواضيع في: {safe_cat_name}**\n(صفحة {page + 1} - المجموع {total_count})",
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode='Markdown'
@@ -396,7 +402,8 @@ async def manage_topic_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         [InlineKeyboardButton("🔙 رجوع للخلف", callback_data=f"view_topics_cat_{cat_id}")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"📑 **إدارة الموضوع: {topic['name']}**\n\nاختر العملية المطلوبة:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -410,7 +417,8 @@ async def start_edit_topic_admin(update: Update, context: ContextTypes.DEFAULT_T
     context.user_data['edit_topic_id'] = topic_id
 
     topic = await db.get_topic(topic_id)
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"📝 **تعديل الموضوع: {topic['name']}**\nأرسل الاسم الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"manage_topic_{topic_id}")]])
     )
@@ -449,7 +457,8 @@ async def confirm_delete_topic_handler(update: Update, context: ContextTypes.DEF
         [InlineKeyboardButton("❌ تراجع", callback_data=f"manage_topic_{topic_id}")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"⚠️ **تأكيد الحذف**\n\nهل أنت متأكد من حذف الموضوع: **{topic['name']}**؟\nسيتم فك ارتباطه بجميع الفتاوى.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -464,7 +473,7 @@ async def delete_topic_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     cat_id = topic['category_id']
 
     if await db.delete_topic(topic_id):
-        await query.edit_message_text(
+        await safe_edit_message_text(
             f"✅ تم حذف الموضوع: **{topic['name']}** بنجاح.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للمواضيع", callback_data=f"view_topics_cat_{cat_id}")]])
         )
@@ -478,7 +487,8 @@ async def confirm_delete_category_handler(update: Update, context: ContextTypes.
     cat_id = int(query.data.split('_')[-1])
     category = await db.get_category(cat_id)
     if not category:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "❌ التصنيف غير موجود.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_categories")]])
         )
@@ -490,7 +500,8 @@ async def confirm_delete_category_handler(update: Update, context: ContextTypes.
         [InlineKeyboardButton("❌ تراجع", callback_data=f"view_topics_cat_{cat_id}")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"⚠️ **تأكيد الحذف**\n\nهل أنت متأكد من حذف التصنيف: **{category['name']}**؟\n"
         f"سيتم حذف {topics_count} موضوع وفك ارتباطه بجميع الفتاوى.",
         reply_markup=InlineKeyboardMarkup(keyboard),
@@ -505,20 +516,23 @@ async def delete_category_handler(update: Update, context: ContextTypes.DEFAULT_
     cat_id = int(query.data.split('_')[-1])
     category = await db.get_category(cat_id)
     if not category:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "❌ التصنيف غير موجود.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_categories")]])
         )
         return
 
     if await db.delete_category(cat_id):
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             f"✅ تم حذف التصنيف: **{category['name']}** بنجاح.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة التصنيفات", callback_data="manage_categories")]]),
             parse_mode='Markdown'
         )
     else:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "❌ فشل حذف التصنيف.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data=f"view_topics_cat_{cat_id}")]])
         )

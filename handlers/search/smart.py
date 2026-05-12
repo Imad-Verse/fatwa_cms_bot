@@ -72,7 +72,8 @@ async def smart_search_now(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text("⚠️ يرجى اختيار فلتر واحد على الأقل.")
         return BotState.STATE_SEARCH_SMART
     
-    await safe_edit_message_text(update, "⌨️ يرجى إرسال كلمة البحث:")
+    keyboard = [[InlineKeyboardButton("🔙 رجوع للفلاتر", callback_data="search_smart")]]
+    await safe_edit_message_text(update, "⌨️ يرجى إرسال كلمة البحث:", reply_markup=InlineKeyboardMarkup(keyboard))
     return BotState.STATE_SMART_SEARCH_QUERY
 
 async def smart_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -81,10 +82,11 @@ async def smart_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     _reset_smart_state(context)
     from .keyboards import create_search_keyboard
     await safe_edit_message_text(update, "🔎 قائمة البحث:", reply_markup=create_search_keyboard())
-    return ConversationHandler.END
+    return BotState.STATE_SEARCH
 
 async def show_smart_scholars_list(update_obj, context: ContextTypes.DEFAULT_TYPE, page: int = 0):
-    scholars, total = await db.get_all_scholars(limit=10, offset=page*10)
+    scholars = await db.get_scholars_with_ids(limit=10, offset=page*10)
+    total = await db.get_scholars_count()
     state = _get_smart_state(context)
     selected_scholars = set(state['scholars'])
 
@@ -106,7 +108,7 @@ async def show_smart_scholars_list(update_obj, context: ContextTypes.DEFAULT_TYP
     keyboard.append([InlineKeyboardButton("🔙 إنهاء الاختيار", callback_data="search_smart")])
     
     text = "👤 **اختر العلماء للبحث في فتاواهم:**"
-    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_smart_scholar_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query

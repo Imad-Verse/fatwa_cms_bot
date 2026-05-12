@@ -17,7 +17,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 from handlers.admin.panel import admin_panel
@@ -113,7 +114,8 @@ async def settings_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")],
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -126,7 +128,8 @@ async def start_set_daily_time(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
         return ConversationHandler.END
     context.user_data["settings_input_mode"] = "daily_time"
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "⏰ **تغيير وقت النشر اليومي**\n\nأرسل الوقت بصيغة `HH:MM` (مثال: 08:00)",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")]]),
         parse_mode='Markdown'
@@ -140,7 +143,8 @@ async def start_set_weekly_time(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
         return ConversationHandler.END
     context.user_data["settings_input_mode"] = "weekly_time"
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "⏰ **تغيير وقت التقرير الأسبوعي**\n\nأرسل الوقت بصيغة `HH:MM` (مثال: 08:00)",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")]]),
         parse_mode='Markdown'
@@ -172,7 +176,8 @@ async def start_set_weekly_day(update: Update, context: ContextTypes.DEFAULT_TYP
         keyboard.append(row)
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="admin_settings")])
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "📅 **اختر يوم التقرير الأسبوعي**:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'

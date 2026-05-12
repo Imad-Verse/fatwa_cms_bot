@@ -17,7 +17,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 
@@ -55,8 +56,8 @@ async def manage_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error fetching sources: {e}")
         error_msg = "❌ حدث خطأ أثناء تحميل المصادر."
-        if query: await query.edit_message_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
-        else: await update.message.reply_text(error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
+        else: await safe_reply_text(update, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
         return
 
     keyboard = []
@@ -88,44 +89,12 @@ async def manage_sources(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"📚 **إدارة المصادر** (صفحة {page + 1})\nإجمالي المصادر: {total_count}\n\nاختر مصدرًا لإدارته:"
 
     if query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
-async def manage_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
-    keyboard = []
-    keyboard.append([InlineKeyboardButton("➕ إضافة مصدر", callback_data="add_source")])
-
-    if sources:
-        row = []
-        for s_id, s_name in sources: # Adjusted to match db.get_sources return type
-             name = s_name
-             row.append(InlineKeyboardButton(f"📚 {name}", callback_data=f"manage_source_{s_id}")) # Adjusted to match db.get_sources return type
-             if len(row) == 2:
-                 keyboard.append(row)
-                 row = []
-        if row:
-            keyboard.append(row)
-    else:
-        keyboard.append([InlineKeyboardButton("❌ لا توجد مصادر حالياً", callback_data="manage_sources")])
-
-    nav_buttons = []
-    if page > 0:
-        nav_buttons.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"manage_sources_page_{page-1}"))
-    if offset + ITEMS_PER_PAGE < total_count:
-        nav_buttons.append(InlineKeyboardButton("➡️ التالي", callback_data=f"manage_sources_page_{page+1}"))
-    if nav_buttons:
-        keyboard.append(nav_buttons)
-
-    keyboard.append([InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")])
-
-    await query.edit_message_text(
-        "📚 **إدارة المصادر**\n\nاختر مصدرًا لإدارته:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode='Markdown'
-    )
 
 
 async def manage_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -135,7 +104,8 @@ async def manage_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     source_id = int(query.data.split("_")[-1])
     source = await db.get_source(source_id)
     if not source:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "❌ المصدر غير موجود.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_sources")]])
         )
@@ -149,7 +119,8 @@ async def manage_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔙 رجوع", callback_data="manage_sources")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"📚 **إدارة المصدر**\n\n"
         f"المصدر: **{source['name']}**\n"
         f"عدد عناوين المصدر: {titles_count}",
@@ -161,7 +132,8 @@ async def manage_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_add_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "➕ **إضافة مصدر**\n\nأرسل اسم المصدر الجديد:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data="manage_sources")]])
     )
@@ -190,7 +162,8 @@ async def start_edit_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     source_id = int(query.data.split("_")[-1])
     context.user_data["edit_source_id"] = source_id
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "✏️ **تعديل اسم المصدر**\n\nأرسل الاسم الجديد للمصدر:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_source_{source_id}")]])
     )
@@ -258,7 +231,8 @@ async def confirm_delete_source(update: Update, context: ContextTypes.DEFAULT_TY
 
     titles_count = await db.get_source_titles_count(source_id)
     if titles_count > 0:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "⚠️ **لا يمكن حذف المصدر**\n\nهذا المصدر يحتوي على عناوين مرتبطة به.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_source_{source_id}")]]),
             parse_mode='Markdown'
@@ -269,7 +243,8 @@ async def confirm_delete_source(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("✅ نعم، احذف", callback_data=f"delete_source_{source_id}")],
         [InlineKeyboardButton("🔙 رجوع", callback_data=f"manage_source_{source_id}")]
     ]
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"🗑️ **تأكيد الحذف**\n\nهل أنت متأكد من حذف المصدر: **{source['name']}**؟",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -281,12 +256,14 @@ async def delete_source_handler(update: Update, context: ContextTypes.DEFAULT_TY
     await query.answer()
     source_id = int(query.data.split("_")[-1])
     if await db.delete_source(source_id):
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "✅ تم حذف المصدر بنجاح.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة المصادر", callback_data="manage_sources")]])
         )
     else:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "⚠️ تعذر حذف المصدر.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة المصادر", callback_data="manage_sources")]])
         )

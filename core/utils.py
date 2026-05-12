@@ -670,47 +670,55 @@ def back_to_categories_keyboard(label: str = "🔙 إدارة التصنيفات
 
 async def safe_reply_text(message_obj, text, **kwargs):
     """
-    إرسال رد بطريقة آمنة. تتعامل مع Update أو Message.
+    إرسال رد بطريقة آمنة. تتعامل مع Update أو Message أو CallbackQuery.
     """
-    from telegram import Update, Message
+    from telegram import Update, Message, CallbackQuery
     from telegram.error import NetworkError, TimedOut
     import asyncio
 
-    # استخراج كائن الرسالة الحقيقي
     actual_msg = None
     if isinstance(message_obj, Message):
         actual_msg = message_obj
     elif isinstance(message_obj, Update):
         actual_msg = message_obj.effective_message
+    elif isinstance(message_obj, CallbackQuery):
+        actual_msg = message_obj.message
     
     if not actual_msg:
-        logger.error("safe_reply_text: Could not find a valid message object to reply to.")
+        logger.error(f"safe_reply_text: Could not find a valid message object to reply to. Type: {type(message_obj)}")
         return None
 
-    max_retries = kwargs.pop('max_retries', 3)
-    retry_delay = kwargs.pop('retry_delay', 2)
+    # التحقق من أن الرسالة قابلة للرد عليها (ليست InaccessibleMessage)
+    if hasattr(actual_msg, 'reply_text'):
+        max_retries = kwargs.pop('max_retries', 3)
+        retry_delay = kwargs.pop('retry_delay', 2)
 
-    for attempt in range(max_retries):
-        try:
-            return await actual_msg.reply_text(text, **kwargs)
-        except (NetworkError, TimedOut) as e:
-            if attempt == max_retries - 1:
-                logger.error(f"Failed to reply after {max_retries} attempts: {e}")
+        for attempt in range(max_retries):
+            try:
+                return await actual_msg.reply_text(text, **kwargs)
+            except (NetworkError, TimedOut) as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Failed to reply after {max_retries} attempts: {e}")
+                    raise
+                logger.warning(f"Network error while replying (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
+                await asyncio.sleep(retry_delay)
+            except Exception as e:
+                if "Message is not modified" in str(e): return None
+                logger.error(f"Unexpected error in safe_reply_text: {e}")
                 raise
-            logger.warning(f"Network error while replying (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
-            await asyncio.sleep(retry_delay)
-        except Exception as e:
-            logger.error(f"Unexpected error in safe_reply_text: {e}")
-            raise
+    else:
+        # إذا كانت الرسالة غير قابلة للرد (مثلاً InaccessibleMessage)، نحاول الإرسال مباشرة إذا توفر Chat ID
+        chat_id = getattr(actual_msg, 'chat_id', None)
+        if chat_id:
+            from core.database import FatwaDatabaseManager # Just an example if needed
+            # We can try to use context.bot if we have it, but here we don't.
+            # Best is to log and return.
+            logger.warning(f"Message object has no reply_text method (InaccessibleMessage?). Chat ID: {chat_id}")
+        return None
 
 async def safe_send_message(bot, chat_id, text, **kwargs):
     """
     إرسال رسالة بطريقة آمنة مع محاولة الإعادة.
-
-    Args:
-        bot: كائن البوت (context.bot)
-        chat_id: معرف الدردشة
-        text: النص المراد إرساله
     """
     from telegram.error import NetworkError, TimedOut
     import asyncio
@@ -734,12 +742,6 @@ async def safe_send_message(bot, chat_id, text, **kwargs):
 async def notify_new_subscription(bot, entity_type: str, entity_data: dict, context=None):
     """
     إرسال إشعار للمالك عند اشتراك مستخدم جديد أو إضافة قناة/مجموعة.
-    
-    Args:
-        bot: كائن البوت
-        entity_type: نوع الكيان ('user', 'channel', 'group')
-        entity_data: بيانات الكيان (id, name, username, etc.)
-        context: سياق التحديث (اختياري)
     """
     from core.config import OWNER_ID
     
@@ -800,7 +802,18 @@ async def safe_edit_message_text(query_obj, text, **kwargs):
         target = query_obj
 
     if not target:
-        logger.error("safe_edit_message_text: Could not find a valid target to edit.")
+        logger.error(f"safe_edit_message_text: Could not find a valid target to edit. Type: {type(query_obj)}")
+        return None
+
+    # تحديد دالة التعديل المناسبة (edit_message_text للـ CallbackQuery و edit_text للـ Message)
+    edit_method = None
+    if hasattr(target, 'edit_message_text'):
+        edit_method = target.edit_message_text
+    elif hasattr(target, 'edit_text'):
+        edit_method = target.edit_text
+
+    if not edit_method:
+        logger.error(f"Target object of type {type(target)} has no editing method (edit_message_text or edit_text).")
         return None
 
     max_retries = kwargs.pop('max_retries', 3)
@@ -808,15 +821,18 @@ async def safe_edit_message_text(query_obj, text, **kwargs):
 
     for attempt in range(max_retries):
         try:
-            return await target.edit_message_text(text, **kwargs)
-        except (NetworkError, TimedOut) as e:
-            if attempt == max_retries - 1:
-                logger.error(f"Failed to edit message after {max_retries} attempts: {e}")
-                raise
-            logger.warning(f"Network error while editing (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
-            await asyncio.sleep(retry_delay)
+            return await edit_method(text, **kwargs)
         except Exception as e:
-            if "Message is not modified" in str(e):
-                return
+            err_msg = str(e)
+            # إذا كانت الرسالة لم تتغير، نتجاهل الخطأ فوراً ولا نحاول الإعادة
+            if "Message is not modified" in err_msg:
+                return None
+            
+            # محاولة الإعادة فقط في حالات أخطاء الشبكة
+            if attempt < max_retries - 1 and isinstance(e, (NetworkError, TimedOut)):
+                logger.warning(f"Network error while editing (attempt {attempt + 1}/{max_retries}): {e}. Retrying...")
+                await asyncio.sleep(retry_delay)
+                continue
+            
             logger.error(f"Unexpected error in safe_edit_message_text: {e}")
             raise

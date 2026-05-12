@@ -20,13 +20,16 @@ async def manage_channels_panel(update: Update, context: ContextTypes.DEFAULT_TY
         if query: await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
         return
 
+    stats = await bot_db.get_active_entity_counts()
+    count_text = f"📊 **إحصائيات النشطة:**\n📢 قنوات: `{stats['channels']}` | 👥 مجموعات: `{stats['groups']}`\n\n"
+
     keyboard = [
         [InlineKeyboardButton("📢 حالة القنوات", callback_data="status_channels"), InlineKeyboardButton("👥 حالة المجموعات", callback_data="status_groups")],
         [InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]
     ]
     await safe_edit_message_text(
         query,
-        "📢 **إدارة القنوات والمجموعات**\n\nتحكم في القنوات المضافة والنشر التلقائي.",
+        f"📢 **إدارة القنوات والمجموعات**\n\n{count_text}تحكم في القنوات المضافة والنشر التلقائي.",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
     )
@@ -105,15 +108,17 @@ async def list_channels_handler(
         InlineKeyboardButton("التالي ➡️", callback_data=next_page_cb)
     ]
 
-    keyboard = [nav_row] # Top
-
+    keyboard = []
     if status == 'inactive' and total_count:
         keyboard.append([InlineKeyboardButton("🗑️ حذف الكل (خروج)", callback_data=f"cleanup_{c_type}")])
     
     keyboard.append(nav_row) # Bottom
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="manage_channels")])
     
-    await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    if query:
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    else:
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def cleanup_inactive(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove inactive channels/groups only when the bot actually left."""

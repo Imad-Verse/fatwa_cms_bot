@@ -2,10 +2,8 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 def create_search_keyboard():
     keyboard = [
-        [InlineKeyboardButton("🏷️ بحث بالعنوان", callback_data="search_title"), InlineKeyboardButton("👤 بحث بالعالم", callback_data="search_scholar")],
-        [InlineKeyboardButton("🗂️ بحث بالتصنيف", callback_data="search_category"), InlineKeyboardButton("📚 بحث بالمصدر", callback_data="search_source")],
-        [InlineKeyboardButton("🔢 بحث برقم الفتوى", callback_data="search_number"), InlineKeyboardButton("🔍 بحث شامل", callback_data="search_all")],
-        [InlineKeyboardButton("🎛️ بحث متقدم", callback_data="search_smart"), InlineKeyboardButton("🤖 بحث بالذكاء الاصطناعي", callback_data="search_ai")],
+        [InlineKeyboardButton("🔍 بحث شامل", callback_data="search_all"), InlineKeyboardButton("🔢 بحث برقم الفتوى", callback_data="search_number")],
+        [InlineKeyboardButton("🤖 بحث بالذكاء الاصطناعي", callback_data="search_ai"), InlineKeyboardButton("🎛️ بحث متقدم", callback_data="search_smart")],
         [InlineKeyboardButton("🔙 رجوع للقائمة الرئيسية", callback_data="back_main")]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -13,8 +11,7 @@ def create_search_keyboard():
 def create_browse_keyboard():
     keyboard = [
         [InlineKeyboardButton("👤 العلماء", callback_data="search_scholar"), InlineKeyboardButton("🗂️ التصنيفات", callback_data="search_category")],
-        [InlineKeyboardButton("📚 المصادر", callback_data="search_source"), InlineKeyboardButton("📅 أحدث الفتاوى", callback_data="search_latest")],
-        [InlineKeyboardButton("🔥 الأكثر مشاهدة", callback_data="search_popular"), InlineKeyboardButton("🎲 فتوى عشوائية", callback_data="random_fatwa")],
+        [InlineKeyboardButton("📚 المصادر", callback_data="search_source"), InlineKeyboardButton("🎲 فتوى عشوائية", callback_data="random_fatwa")],
         [InlineKeyboardButton("🔙 رجوع", callback_data="back_main")]
     ]
     return InlineKeyboardMarkup(keyboard)

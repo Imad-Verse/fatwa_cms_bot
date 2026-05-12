@@ -101,9 +101,14 @@ async def receive_podcast_content(update: Update, context: ContextTypes.DEFAULT_
     if not message:
         return ConversationHandler.END
 
-    users = await bot_db.get_active_user_ids()
-    total_targets = len(users)
+    maintenance_enabled = await bot_db.get_setting('maintenance_mode', '0') == '1'
+    if maintenance_enabled:
+        users = [update.effective_user.id]
+        await update.message.reply_text("🚧 **وضع الصيانة مفعّل:** سيتم إرسال الإذاعة لك فقط للمعاينة.")
+    else:
+        users = await bot_db.get_active_user_ids()
 
+    total_targets = len(users)
     if total_targets == 0:
         await update.message.reply_text("⚠️ لا يوجد مشتركون حالياً.")
         return ConversationHandler.END

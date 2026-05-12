@@ -17,7 +17,8 @@ from core.bot_db import BotDatabaseManager
 from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
-    back_to_categories_keyboard, escape_markdown, notify_new_subscription
+    back_to_categories_keyboard, escape_markdown, notify_new_subscription,
+    safe_reply_text, safe_edit_message_text
 )
 from handlers.general import cancel_operation, start_refresh, back_to_main
 from handlers.admin.panel import admin_panel
@@ -43,7 +44,8 @@ async def manage_scholars_panel(update: Update, context: ContextTypes.DEFAULT_TY
         [InlineKeyboardButton("🔙 رجوع للوحة الإدارة", callback_data="admin_panel")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "👤 **إدارة العلماء**\n\nاختر من العمليات التالية:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown'
@@ -89,9 +91,9 @@ async def show_scholars_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
         keyboard.append([InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")])
         
         if query:
-            await query.edit_message_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            await safe_edit_message_text(query, msg, reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await update.message.reply_text(msg, reply_markup=InlineKeyboardMarkup(keyboard))
+            await safe_reply_text(update, msg, reply_markup=InlineKeyboardMarkup(keyboard))
         return
 
     text = f"👤 **إدارة العلماء**\n"
@@ -126,9 +128,9 @@ async def show_scholars_admin(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard.append([InlineKeyboardButton("🏠 لوحة الإدارة", callback_data="admin_panel")])
 
     if query:
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     else:
-        await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 
 async def start_search_schol_admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -136,7 +138,8 @@ async def start_search_schol_admin(update: Update, context: ContextTypes.DEFAULT
     query = update.callback_query
     await query.answer()
     
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "🔍 **البحث عن عالم**\n\nأرسل اسم العالم (أو جزء منه):",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 رجوع للقائمة", callback_data="scholars_list_0")]]),
         parse_mode='Markdown'
@@ -196,7 +199,8 @@ async def view_scholar_admin(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton("🔙 إدارة العلماء", callback_data="scholars_list_0")]
     ]
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         text,
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode='Markdown',
@@ -213,7 +217,8 @@ async def start_add_scholar_admin(update: Update, context: ContextTypes.DEFAULT_
         return ConversationHandler.END
 
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "👤 **إضافة عالم جديد**\n\nالرجاء إرسال اسم العالم الكامل:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="manage_scholars")]]),
         parse_mode='Markdown'
@@ -259,7 +264,8 @@ async def start_add_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TY
     scholar_id = int(query.data.split("_")[-1])
     scholar = await db.get_scholar_by_id(scholar_id)
     if not scholar:
-        await query.edit_message_text(
+        await safe_edit_message_text(
+            query,
             "⚠️ لم يتم العثور على هذا العالم.",
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إدارة العلماء", callback_data="scholars_list_0")]])
         )
@@ -268,7 +274,8 @@ async def start_add_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TY
     context.user_data['scholar_bio_id'] = scholar_id
 
     safe_name = escape_markdown(scholar['name'])
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         f"📝 *تعديل السيرة الذاتية للعالم:* {safe_name}\n\nأرسل السيرة الذاتية الجديدة:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"scholar_view_{scholar_id}")]]),
         parse_mode='Markdown'
@@ -302,10 +309,11 @@ async def confirm_scholar_bio(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     scholar_id = context.user_data.get('scholar_bio_id')
     if not scholar_id:
-        await query.edit_message_text("⚠️ حدث خطأ في البيانات.")
+        await safe_edit_message_text(query, "⚠️ حدث خطأ في البيانات.")
         return ConversationHandler.END
 
-    await query.edit_message_text(
+    await safe_edit_message_text(
+        query,
         "🌐 أرسل رابط الموقع الرسمي للعالم:",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("❌ إلغاء", callback_data=f"scholar_view_{scholar_id}")]])
     )

@@ -1,5 +1,5 @@
 import logging
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ContextTypes, 
     ConversationHandler, 
@@ -60,11 +60,21 @@ bot_db = BotDatabaseManager()
 
 async def start_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = "🔎 قائمة البحث:"
-    await safe_reply_text(update, text, reply_markup=create_search_keyboard())
+    if update.callback_query:
+        await safe_edit_message_text(update, text, reply_markup=create_search_keyboard())
+    else:
+        await safe_reply_text(update, text, reply_markup=create_search_keyboard())
     return BotState.STATE_SEARCH
 
 async def search_ai_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_edit_message_text(update, "🤖 **البحث بالذكاء الاصطناعي**\n\nأرسل سؤالك أو الحالة التي تبحث عنها، وسأقوم باستخراج المصطلحات الفقهية المناسبة والبحث عنها دلالياً:")
+    text = "🤖 **البحث بالذكاء الاصطناعي**\n\nأرسل سؤالك أو الحالة التي تبحث عنها، وسأقوم باستخراج المصطلحات الفقهية المناسبة والبحث عنها دلالياً:"
+    keyboard = [[InlineKeyboardButton("🔙 رجوع لقائمة البحث", callback_data="search_fatwas")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await safe_edit_message_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
     return BotState.STATE_SEARCH_AI
 
 async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,7 +128,7 @@ async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_
                 
             await safe_reply_text(update, full_text, parse_mode='Markdown')
         
-        await display_search_results(update, context, results, "الفتاوى المستند إليها", total, is_callback=False, back_callback="search_ai")
+        await display_search_results(update, context, results, "الفتاوى المستند إليها", total, is_callback=False, back_callback="search_fatwas")
     except Exception as e:
         logger.error(f"Error in perform_search_ai_query: {e}")
         await safe_reply_text(update, "❌ عذراً، حدث خطأ فني أثناء معالجة طلبك.")
@@ -126,7 +136,14 @@ async def perform_search_ai_query(update: Update, context: ContextTypes.DEFAULT_
     return ConversationHandler.END
 
 async def search_all_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_edit_message_text(update, "🔍 **البحث الشامل**\n\nأرسل كلمة أو جملة للبحث عنها في العناوين والأسئلة والأجوبة:")
+    text = "🔍 **البحث الشامل**\n\nأرسل كلمة أو جملة للبحث عنها في العناوين والأسئلة والأجوبة:"
+    keyboard = [[InlineKeyboardButton("🔙 رجوع لقائمة البحث", callback_data="search_fatwas")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await safe_edit_message_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
+    else:
+        await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
     return BotState.STATE_SEARCH_ALL
 
 async def perform_search_all(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -137,11 +154,18 @@ async def perform_search_all(update: Update, context: ContextTypes.DEFAULT_TYPE)
         'params': {'query': query_text, 'public': public_only}
     }
     results, total = await _fetch_contextual_text_fatwas(base_terms=[], user_query=query_text, public_only=public_only, limit=5, offset=0)
-    await display_search_results(update, context, results, f"نتائج البحث الشامل عن: {query_text}", total, is_callback=False, back_callback="search_all")
+    await display_search_results(update, context, results, f"نتائج البحث الشامل عن: {query_text}", total, is_callback=False, back_callback="search_fatwas")
     return ConversationHandler.END
 
 async def search_number_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_edit_message_text(update, "🔢 أرسل رقم الفتوى للبحث عنها مباشرة:")
+    text = "🔢 أرسل رقم الفتوى للبحث عنها مباشرة:"
+    keyboard = [[InlineKeyboardButton("🔙 رجوع لقائمة البحث", callback_data="search_fatwas")]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if update.callback_query:
+        await safe_edit_message_text(update, text, reply_markup=reply_markup)
+    else:
+        await safe_reply_text(update, text, reply_markup=reply_markup)
     return BotState.STATE_SEARCH_NUMBER
 
 async def perform_search_number(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -155,25 +179,19 @@ async def perform_search_number(update: Update, context: ContextTypes.DEFAULT_TY
         await safe_reply_text(update, f"❌ لم يتم العثور على الفتوى رقم {num_str}")
         return ConversationHandler.END
 
-    from core.keyboards import create_fatwa_view_keyboard
-    is_admin = await bot_db.is_admin(update.effective_user.id)
-    await safe_reply_text(update, format_fatwa_card(fatwa), reply_markup=create_fatwa_view_keyboard(fatwa, is_admin, False), parse_mode='Markdown')
+    # عرض الفتوى كنتيجة بحث مختصرة بدلاً من فتحها مباشرة بأزرار التحكم
+    text = f"🔢 **نتائج البحث عن رقم الفتوى: {num_str}**\n\n"
+    text += format_fatwa_card(fatwa, use_markdown=True)
+    
+    keyboard = [
+        [InlineKeyboardButton(f"📖 عرض #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")],
+        [InlineKeyboardButton("🔙 رجوع للبحث", callback_data="search_fatwas")]
+    ]
+    
+    await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
     return ConversationHandler.END
 
-async def search_title_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await safe_edit_message_text(update, "🏷️ أرسل عنوان الفتوى أو كلمات منه:")
-    return BotState.STATE_SEARCH_TITLE
 
-async def perform_search_title(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query_text = update.message.text
-    public_only = not await bot_db.is_admin(update.effective_user.id)
-    context.user_data['current_search_state'] = {
-        'type': 'title',
-        'params': {'query': query_text, 'public': public_only}
-    }
-    results, total = await _fetch_contextual_text_fatwas(base_terms=[], user_query=query_text, public_only=public_only, limit=5, offset=0)
-    await display_search_results(update, context, results, f"نتائج البحث عن: {query_text}", total, is_callback=False, back_callback="search_title")
-    return ConversationHandler.END
 
 async def search_latest(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -233,7 +251,7 @@ search_conv = ConversationHandler(
             CallbackQueryHandler(show_random_fatwa_proxy, pattern=r'^random_fatwa(?:_\d+)?$'),
             CallbackQueryHandler(continue_reading_fatwa_proxy, pattern=r'^continue_read_\d+(?:_.+)?$'),
             CallbackQueryHandler(search_number_prompt, pattern='^search_number$'),
-            CallbackQueryHandler(search_title_prompt, pattern='^search_title$'),
+
             CallbackQueryHandler(search_all_prompt, pattern='^search_all$'),
             CallbackQueryHandler(search_scholar, pattern='^search_scholar$'),
             CallbackQueryHandler(search_category, pattern='^search_category$'),
@@ -278,11 +296,7 @@ search_conv = ConversationHandler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_smart_search_query),
             CallbackQueryHandler(start_smart_search, pattern='^search_smart$')
         ],
-        BotState.STATE_SEARCH_TITLE: [
-            MessageHandler(filters.TEXT & ~filters.COMMAND, perform_search_title),
-            CallbackQueryHandler(start_search, pattern='^search_fatwas$'),
-            CallbackQueryHandler(back_to_main, pattern='^back_main$')
-        ],
+
         BotState.STATE_SEARCH_ALL: [
             MessageHandler(filters.TEXT & ~filters.COMMAND, perform_search_all),
             CallbackQueryHandler(start_search, pattern='^search_fatwas$'),

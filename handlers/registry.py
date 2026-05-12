@@ -142,7 +142,7 @@ def register_all_handlers(app: Application):
         toggle_targeted_publish, start_select_publish_category, start_search_publish_category,
         clear_publish_category_search, handle_publish_category_search_input, set_publish_category,
         start_select_publish_topics, toggle_publish_topic, clear_publish_topics_selection,
-        cleanup_inactive, start_schedule_fatwa_once
+        cleanup_inactive, start_schedule_fatwa_once, clear_scheduled_fatwa_handler
     )
     from telegram.ext import ChatMemberHandler
     
@@ -157,6 +157,7 @@ def register_all_handlers(app: Application):
     app.add_handler(CallbackQueryHandler(auto_publish_panel, pattern='^auto_publish_panel$'))
     app.add_handler(CallbackQueryHandler(force_publish_handler, pattern='^force_publish_now$'))
     app.add_handler(CallbackQueryHandler(start_schedule_fatwa_once, pattern='^schedule_fatwa_once$'))
+    app.add_handler(CallbackQueryHandler(clear_scheduled_fatwa_handler, pattern='^clear_scheduled_fatwa$'))
     app.add_handler(CallbackQueryHandler(toggle_auto_publish, pattern='^toggle_auto_publish_master$'))
     app.add_handler(CallbackQueryHandler(targeted_publish_panel, pattern='^targeted_publish_panel$'))
     app.add_handler(CallbackQueryHandler(toggle_targeted_publish, pattern='^toggle_targeted_publish$'))

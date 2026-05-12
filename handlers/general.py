@@ -274,47 +274,44 @@ async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_reply_text(update, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def how_to_add_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """عرض تعليمات إضافة البوت للقنوات والمجموعات"""
+    """عرض تعليمات إضافة البوت للقنوات والمجموعات بتصميم محسن"""
     query = update.callback_query
     await query.answer()
 
-    # محاولة جلب يوزر المالك
-    owner_username = "Abulharith_imad" # Default fallback
-    try:
-        owner_chat = await context.bot.get_chat(OWNER_ID)
-        if owner_chat.username:
-            owner_username = owner_chat.username
-    except Exception as e:
-        logger.warning(f"Failed to fetch owner info: {e}")
-
-    # Escape usernames for Markdown
-    owner_username_esc = owner_username.replace('_', '\\_')
-
+    bot_username = (context.bot.username or "Fatwa_CMS_Bot").replace('_', '\\_')
+    
     text = (
-        "**طريقة إضافة البوت إلى قناتك أو مجموعتك**\n\n"
-        "للاستفادة من خدمة نشر الفتاوى التلقائية:\n\n"
-        "**أولًا:**\n"
-        "قم بإضافة الروبوت @Fatwa\\_CMS\\_Bot إلى قناتك أو مجموعتك بصفة **مشرف**، وذلك عبر أحد الروابط التالية:\n\n"
-        "🔗 **لإضافته إلى مجموعة (Group):**\n"
-        "[اضغط هنا للإضافة](https://t.me/Fatwa_CMS_Bot?startgroup&admin=delete_messages)\n\n"
-        "📢 **لإضافته إلى قناة (Channel):**\n"
-        "[اضغط هنا للإضافة](https://t.me/Fatwa_CMS_Bot?startchannel&admin=post_messages+edit_messages+delete_messages)\n\n"
-        "🔒 **تنبيه مهم:**\n"
-        "ستظهر صلاحيات إدارة الرسائل مفعلة افتراضيًا، ويمكنك إلغاء أي صلاحية قبل الضغط على (إضافة مشرف) إذا رغبت.\n\n"
-        "الفوائد المنشورة موثوقة ومنقولة عن كبار العلماء، لذا يُرجى عدم حذف الروبوت حتى تستمر الخدمة دون انقطاع.\n\n"
-        "🌸 **للمساعدة:**\n"
-        "إذا ما عرفت كيفية إضافة البوت لقناتك او مجموعتك تواصل معي:\n"
-        f"👉 @{owner_username_esc}\n\n"
-        "أو شاهد الفيديو التوضيحي عبر الضغط على الزر الموجود أسفل\n"
-        "نسأل الله أن ينفع بها، ويجعلها في ميزان الحسنات."
+        "🚀 **أضف البوت إلى قناتك أو مجموعتك**\n\n"
+        "للاستفادة من خدمة **النشر التلقائي** للفتاوى يوميًا بشكل منظم وميسر، يرجى اتباع الخطوات التالية:\n\n"
+        "1️⃣ **الإضافة بصفة مشرف:** أضف البوت بصفة (مشرف/Admin) في قناتك أو مجموعتك.\n"
+        "2️⃣ **تفعيل الصلاحيات:** تأكد من تفعيل صلاحية (إدارة الرسائل/Post Messages) ليتمكن البوت من النشر.\n\n"
+        "✨ **مميزات النشر التلقائي:**\n"
+        "• محتوى دعوي موثوق من كبار العلماء.\n"
+        "• نشر دوري يساهم في نشر العلم الشرعي.\n"
+        "• تحسين التفاعل في قناتك أو مجموعتك.\n\n"
+        "👇 **استخدم الأزرار أدناه للإضافة المباشرة والسهلة:**"
     )
 
+    # روابط الإضافة المباشرة بصفة مشرف
+    add_to_group_url = f"https://t.me/{context.bot.username}?startgroup&admin=post_messages+edit_messages+delete_messages"
+    add_to_channel_url = f"https://t.me/{context.bot.username}?startchannel&admin=post_messages+edit_messages+delete_messages"
+
     keyboard = [
-        [InlineKeyboardButton("🎥 فيديو توضيحي", callback_data="show_add_bot_tutorial")],
-        [InlineKeyboardButton("\U0001f3e0 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0627\u0644\u0631\u0626\u064a\u0633\u064a\u0629", callback_data="back_main")]
+        [
+            InlineKeyboardButton("📢 أضف للقناة", url=add_to_channel_url),
+            InlineKeyboardButton("👥 أضف للمجموعة", url=add_to_group_url)
+        ],
+        [InlineKeyboardButton("🎥 فيديو توضيحي (شرح الطريقة)", callback_data="show_add_bot_tutorial"), InlineKeyboardButton("💬 الدعم الفني / مساعدة", url="https://t.me/abulharith_imad")],
+        [InlineKeyboardButton("🔙 العودة للقائمة الرئيسية", callback_data="back_main")]
     ]
 
-    await safe_edit_message_text(query, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown', disable_web_page_preview=True)
+    await safe_edit_message_text(
+        query, 
+        text, 
+        reply_markup=InlineKeyboardMarkup(keyboard), 
+        parse_mode='Markdown', 
+        disable_web_page_preview=True
+    )
 
 async def show_add_bot_tutorial(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """إرسال فيديو وشرح لطريقة إضافة البوت"""

@@ -24,7 +24,8 @@ from .autopublish import (
     start_select_publish_topics,
     toggle_publish_topic,
     clear_publish_topics_selection,
-    start_schedule_fatwa_once
+    start_schedule_fatwa_once,
+    clear_scheduled_fatwa_handler
 )
 from .publish import (
     force_publish_handler
@@ -54,6 +55,7 @@ __all__ = [
     'clear_publish_topics_selection',
     'force_publish_handler',
     'start_schedule_fatwa_once',
+    'clear_scheduled_fatwa_handler',
     'daily_fatwa_job',
     'weekly_fatwa_report_job'
 ]

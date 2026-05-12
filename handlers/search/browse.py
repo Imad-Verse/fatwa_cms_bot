@@ -30,7 +30,8 @@ async def search_scholar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BotState.STATE_SEARCH
 
 async def show_scholars_list(update_obj, context, page=0):
-    scholars, total = await db.get_all_scholars(limit=10, offset=page*10)
+    scholars = await db.get_scholars_with_ids(limit=10, offset=page*10)
+    total = await db.get_scholars_count()
     keyboard = []
     for s in scholars:
         keyboard.append([InlineKeyboardButton(s['name'], callback_data=f"sel_sch_{s['id']}")])
@@ -45,7 +46,7 @@ async def show_scholars_list(update_obj, context, page=0):
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
     text = "👤 **اختر العالم:**"
-    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_scholar_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -56,7 +57,7 @@ async def handle_scholar_selection(update: Update, context: ContextTypes.DEFAULT
         return BotState.STATE_SEARCH
     
     scholar_id = int(data[2])
-    scholar = await db.get_scholar(scholar_id)
+    scholar = await db.get_scholar_by_id(scholar_id)
     if not scholar: return BotState.STATE_SEARCH
     
     public_only = not await bot_db.is_admin(update.effective_user.id)
@@ -75,7 +76,9 @@ async def search_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BotState.STATE_SEARCH
 
 async def show_categories_list(update_obj, context, page=0, search_query=None):
-    categories, total = await db.get_all_categories(limit=10, offset=page*10)
+    cat_tuples = await db.get_categories(limit=10, offset=page*10)
+    categories = [{'id': c[0], 'name': c[1]} for c in cat_tuples]
+    total = await db.get_categories_count()
     keyboard = []
     for c in categories:
         keyboard.append([InlineKeyboardButton(c['name'], callback_data=f"sel_cat_{c['id']}")])
@@ -90,7 +93,7 @@ async def show_categories_list(update_obj, context, page=0, search_query=None):
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
     text = "🗂️ **اختر التصنيف:**"
-    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_category_search_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -147,7 +150,7 @@ async def fetch_and_display_cat_fatwas(update_obj, context, cat_id, topic_id=Non
     }
     results, total = await db.search_fatwas(category_id=cat_id, topic_id=topic_id, public_only=public_only, limit=5, offset=0)
     title = f"تصنيف: {cat['name'] if cat else 'غير معروف'}" + (f" - {topic['name']}" if topic else "")
-    back_cb = f"view_topics_{cat_id}" if topic_id else "search_category"
+    back_cb = f"sel_cat_{cat_id}" if topic_id else "search_category"
     await display_search_results(update_obj, context, results, title, total, is_callback=True, back_callback=back_cb)
 
 async def search_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -157,10 +160,12 @@ async def search_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return BotState.STATE_SEARCH
 
 async def show_sources_list(update_obj, context, page=0, search_query=None):
-    sources, total = await db.get_all_sources(limit=10, offset=page*10)
+    src_tuples = await db.get_sources(limit=10, offset=page*10)
+    sources = [{'id': s[0], 'name': s[1]} for s in src_tuples]
+    total = await db.get_sources_count()
     keyboard = []
     for s in sources:
-        keyboard.append([InlineKeyboardButton(s['title'], callback_data=f"sel_src_{s['id']}")])
+        keyboard.append([InlineKeyboardButton(s['name'], callback_data=f"sel_src_{s['id']}")])
     
     nav_row = []
     if page > 0: nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"src_page_{page-1}"))
@@ -172,7 +177,7 @@ async def show_sources_list(update_obj, context, page=0, search_query=None):
     
     keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="browse_fatwas")])
     text = "📚 **اختر المصدر:**"
-    await safe_reply_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    await safe_edit_message_text(update_obj, text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def handle_source_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -188,10 +193,10 @@ async def handle_source_selection(update: Update, context: ContextTypes.DEFAULT_
     
     context.user_data['current_search_state'] = {
         'type': 'source',
-        'params': {'source_id': source_id, 'source_name': source['title'] if source else 'غير معروف', 'public': public_only}
+        'params': {'source_id': source_id, 'source_name': source['name'] if source else 'غير معروف', 'public': public_only}
     }
     results, total = await db.get_all_fatwas(source_id=source_id, status='published' if public_only else None, limit=5, offset=0)
-    await display_search_results(update, context, results, f"مصدر: {source['title'] if source else 'غير معروف'}", total, is_callback=True, back_callback="search_source")
+    await display_search_results(update, context, results, f"مصدر: {source['name'] if source else 'غير معروف'}", total, is_callback=True, back_callback="search_source")
     return BotState.STATE_SEARCH
 
 async def handle_search_cat_query(update: Update, context: ContextTypes.DEFAULT_TYPE):

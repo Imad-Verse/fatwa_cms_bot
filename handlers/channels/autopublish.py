@@ -31,7 +31,8 @@ async def _get_selected_publish_category() -> Tuple[Optional[int], Optional[Dict
     return cat_id, category
 
 async def _load_targeted_topic_selection(category_id: int) -> Tuple[List[int], Dict[int, str]]:
-    topics = await db.get_topics_by_category(category_id); topic_map = {int(tid): name for tid, name in topics}
+    topics, _ = await db.get_topics_by_category(category_id)
+    topic_map = {int(t['id']): t['name'] for t in topics}
     raw_value = await bot_db.get_setting(TARGETED_TOPICS_SETTING_KEY, '') or ''
     selected_ids = _parse_int_list_setting(raw_value)
     norm_ids = [tid for tid in selected_ids if tid in topic_map]
@@ -75,30 +76,67 @@ async def auto_publish_panel(update: Update, context: ContextTypes.DEFAULT_TYPE)
     auto_publish = await bot_db.get_setting('auto_publish', '0'); specific_enabled = await bot_db.get_setting('auto_publish_specific', '0')
     scheduled_num, scheduled_fatwa = await _get_scheduled_fatwa()
 
-    if auto_publish == '1': status_text, toggle_icon = "✅ مفعل (نشر عشوائي)", "إيقاف 🚫"
+    # تحديد النص الوصفي للحالة العامة
+    if auto_publish == '1': base_status = "النشر العشوائي (فعّال)"
     elif specific_enabled == '1':
-        cat_id, category = await _get_selected_publish_category(); cat_name = category['name'] if category else "غير محدد"
-        status_text, toggle_icon = f"✅ مفعل (نشر محدد: {escape_markdown(cat_name)})", "تفعيل النشر العشوائي ✅"
-    else: status_text, toggle_icon = "❌ معطل بالكامل", "تفعيل النشر العشوائي ✅"
+        _, category = await _get_selected_publish_category(); cat_name = category['name'] if category else "غير محدد"
+        base_status = f"النشر المحدد: {escape_markdown(cat_name)} (فعّال)"
+    else: base_status = "النشر التلقائي (معطّل)"
 
-    toggle_btn_text = "إيقاف النشر العشوائي 🚫" if auto_publish == '1' else "تفعيل النشر العشوائي ✅"
-    sch_btn_text = f"🗓️ جدولة فتوى (#{scheduled_num})" if scheduled_num else "🗓️ جدولة فتوى"
-    sch_status = f"🗓️ الجدولة القادمة: فتوى رقم `{scheduled_num}` بعنوان **{escape_markdown(scheduled_fatwa['title'])}**\nسيتم نشرها في الموعد القادم.\n" if scheduled_num and scheduled_fatwa else "🗓️ الجدولة القادمة: لا توجد فتوى مجدولة.\n"
+    # الحالة الرئيسية التي تظهر للمستخدم
+    if scheduled_num and scheduled_fatwa:
+        status_text = f"🗓️ **مجدول حالياً (فتوى #{scheduled_num})**"
+        status_note = f"⚠️ سيتم نشر الفتوى المجدولة أولاً، ثم العودة إلى: **{base_status}**."
+    else:
+        status_text = f"✅ **{base_status}**" if (auto_publish == '1' or specific_enabled == '1') else f"❌ **{base_status}**"
+        status_note = "💡 لا توجد فتاوى مجدولة حالياً."
+
+    toggle_btn_text = "🔴 إيقاف النشر العشوائي" if auto_publish == '1' else "🟢 تفعيل النشر العشوائي"
+    sch_btn_text = f"🗓️ تعديل الجدولة (#{scheduled_num})" if scheduled_num else "🗓️ جدولة فتوى محددة"
+    
+    sch_info = ""
+    if scheduled_num and scheduled_fatwa:
+        sch_info = f"📌 **الجدولة القادمة:** فتوى رقم `{scheduled_num}`\n📝 **العنوان:** {escape_markdown(scheduled_fatwa['title'])}\n⚠️ *سيتم نشر هذه الفتوى حصراً في الموعد القادم بدلاً من النشر العشوائي.*\n\n"
+    else:
+        sch_info = "🗓️ **الجدولة:** لا توجد فتوى محددة (سيتم استخدام النظام العشوائي).\n\n"
 
     keyboard = [
-        [InlineKeyboardButton("🚀 نشر الآن", callback_data="force_publish_now"), InlineKeyboardButton(sch_btn_text, callback_data="schedule_fatwa_once")],
-        [InlineKeyboardButton(toggle_btn_text, callback_data="toggle_auto_publish_master"), InlineKeyboardButton("🎯 إعدادات النشر المحدد", callback_data="targeted_publish_panel")],
+        [InlineKeyboardButton("🚀 نشر الآن (فوري)", callback_data="force_publish_now"), InlineKeyboardButton(sch_btn_text, callback_data="schedule_fatwa_once")],
+        [InlineKeyboardButton(toggle_btn_text, callback_data="toggle_auto_publish_master")],
+        [InlineKeyboardButton("🎯 إعدادات النشر المحدد (تصنيفات)", callback_data="targeted_publish_panel")],
         [InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]
     ]
-    await safe_edit_message_text(query, f"⚙️ **إدارة النشر التلقائي**\n\nالحالة الحالية: {status_text}\n{sch_status}تحكم في خيارات النشر التلقائي.", reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+    
+    message_text = (
+        f"⚙️ **إدارة النشر التلقائي**\n\n"
+        f"📊 **الحالة:** {status_text}\n"
+        f"ℹ️ {status_note}\n\n"
+        f"{sch_info}"
+        f"💡 يمكنك جدولة فتوى معينة للنشر القادم، أو ترك البوت يختار عشوائياً وفق الإعدادات."
+    )
+    
+    await safe_edit_message_text(query, message_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
+
+async def clear_scheduled_fatwa_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """مسح الجدولة الحالية"""
+    query = update.callback_query; await query.answer()
+    if not await _ensure_admin(update, query): return
+    await _clear_scheduled_fatwa()
+    await query.answer("🗑️ تم إلغاء الجدولة", show_alert=True)
+    await auto_publish_panel(update, context)
 
 async def toggle_auto_publish(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """تفعيل/تعطيل النشر التلقائي (Global/Random)"""
     query = update.callback_query; await query.answer()
     if not await _ensure_admin(update, query): return
     current = await bot_db.get_setting('auto_publish', '0')
-    if current == '0': await bot_db.set_setting('auto_publish', '1'); await bot_db.set_setting('auto_publish_specific', '0')
-    else: await bot_db.set_setting('auto_publish', '0')
+    if current == '0':
+        # تفعيل النشر العشوائي يعطل النشر المحدد ويمسح الجدولة
+        await bot_db.set_setting('auto_publish', '1')
+        await bot_db.set_setting('auto_publish_specific', '0')
+        await _clear_scheduled_fatwa()
+    else:
+        await bot_db.set_setting('auto_publish', '0')
     await auto_publish_panel(update, context)
 
 async def start_schedule_fatwa_once(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -108,8 +146,13 @@ async def start_schedule_fatwa_once(update: Update, context: ContextTypes.DEFAUL
     context.user_data[AWAITING_SCHEDULED_FATWA_INPUT_KEY] = True
     context.user_data.pop('awaiting_pub_cat_search', None)
     num, _ = await _get_scheduled_fatwa(); prompt = f"🗓️ **جدولة فتوى**\n\nأرسل رقم الفتوى للنشر القادم."
-    if num: prompt += f"\n\nالجدولة الحالية: `{num}`\nأرسل رقمًا جديدًا للاستبدال."
-    await safe_edit_message_text(query, prompt, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 إلغاء", callback_data="auto_publish_panel")]]), parse_mode='Markdown')
+    keyboard = []
+    if num:
+        prompt += f"\n\n📌 الجدولة الحالية: فتوى رقم `{num}`\n💡 أرسل رقمًا جديدًا للاستبدال، أو اضغط إلغاء الجدولة أدناه."
+        keyboard.append([InlineKeyboardButton("🗑️ إلغاء الجدولة الحالية", callback_data="clear_scheduled_fatwa")])
+    
+    keyboard.append([InlineKeyboardButton("🔙 رجوع", callback_data="auto_publish_panel")])
+    await safe_edit_message_text(query, prompt, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='Markdown')
 
 async def targeted_publish_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """لوحة النشر المحدد"""
@@ -137,6 +180,7 @@ async def toggle_targeted_publish(update: Update, context: ContextTypes.DEFAULT_
         if not cat_id:
             await query.answer("⚠️ يرجى اختيار تصنيف أولاً!", show_alert=True)
             return
+        # تفعيل النشر المحدد يعطل النشر العشوائي
         await bot_db.set_setting('auto_publish_specific', '1')
         await bot_db.set_setting('auto_publish', '0')
     else:
@@ -208,8 +252,15 @@ async def handle_publish_category_search_input(update: Update, context: ContextT
                 return
             await bot_db.set_setting(SCHEDULED_FATWA_SETTING_KEY, str(num))
             context.user_data.pop(AWAITING_SCHEDULED_FATWA_INPUT_KEY, None)
-            time = await bot_db.get_setting('daily_publish_time', '12:00')
-            await update.message.reply_text(f"✅ تمت جدولة رقم `{num}` في ({time}).", parse_mode='Markdown', reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ إدارة النشر التلقائي", callback_data="auto_publish_panel")]]))
+            
+            await update.message.reply_text(
+                f"✅ **تمت جدولة الفتوى بنجاح!**\n\n"
+                f"🔢 رقم الفتوى: `{num}`\n"
+                f"📝 العنوان: {escape_markdown(fatwa['title'])}\n\n"
+                f"⏳ سيتم نشرها تلقائياً في الموعد القادم.",
+                parse_mode='Markdown',
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⚙️ العودة للإعدادات", callback_data="auto_publish_panel")]])
+            )
         except:
             await update.message.reply_text("⚠️ أرسل رقم فتوى صحيح.")
             return
@@ -257,11 +308,14 @@ async def start_select_publish_topics(update: Update, context: ContextTypes.DEFA
     page = max(page, 0)
     selected_ids, topic_map = await _load_targeted_topic_selection(cat_id)
     ITEMS, offset = 8, page * 8
-    topics = await db.get_topics_by_category(cat_id, limit=ITEMS, offset=offset)
-    total = await db.get_topics_count(cat_id)
+    topics, total = await db.get_topics_by_category(cat_id, limit=ITEMS, offset=offset)
     keyboard = []
     for i in range(0, len(topics), 2):
-        keyboard.append([InlineKeyboardButton(f"✅ {n}" if tid in selected_ids else n, callback_data=f"toggle_pub_top_{tid}_{page}") for tid, n in topics[i:i+2]])
+        row = []
+        for t in topics[i:i+2]:
+            tid, n = t['id'], t['name']
+            row.append(InlineKeyboardButton(f"✅ {n}" if tid in selected_ids else n, callback_data=f"toggle_pub_top_{tid}_{page}"))
+        keyboard.append(row)
     # Navigation Row
     nav_row = []
     if page > 0: nav_row.append(InlineKeyboardButton("⬅️ السابق", callback_data=f"sel_pub_top_page_{page-1}"))

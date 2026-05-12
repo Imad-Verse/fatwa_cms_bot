@@ -281,8 +281,8 @@ async def show_topics_step(update_obj, context, cat_id, page=0, search_query=Non
     cat_name = cat_row['name'] if cat_row else "غير محدد"
     if search_query is None: search_query = context.user_data.get(f'topic_search_query_{cat_id}')
     else: context.user_data[f'topic_search_query_{cat_id}'] = search_query
-    topics = await db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query)
-    total_count = await db.get_topics_count(cat_id, search_query=search_query); slot = context.user_data.get('taxonomy_slot', 1)
+    topics, total_count = await db.get_topics_by_category(cat_id, limit=ITEMS_PER_PAGE, offset=offset, search_query=search_query)
+    slot = context.user_data.get('taxonomy_slot', 1)
     _set_add_step(context, f"topics_{slot}"); label = "الفقهي" if slot == 1 else "الموضوعي"
     sel = context.user_data.get(f'selected_topics_slot_{slot}', [])
     sel_names = []
@@ -292,7 +292,8 @@ async def show_topics_step(update_obj, context, cat_id, page=0, search_query=Non
     sel_text = ", ".join(escape_markdown(n) for n in sel_names) if sel_names else "لا يوجد"
     keyboard = []
     row = []
-    for tid, name in topics:
+    for topic in topics:
+        tid, name = topic['id'], topic['name']
         row.append(InlineKeyboardButton(f"✅ {name}" if tid in sel else name, callback_data=f"toggle_topic_{tid}"))
         if len(row) == 2: keyboard.append(row); row = []
     if row: keyboard.append(row)

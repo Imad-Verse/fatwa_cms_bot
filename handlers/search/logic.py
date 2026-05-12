@@ -151,34 +151,36 @@ async def _fetch_popular_fatwas(public_only: bool, limit: int, offset: int, max_
     """Fetch popular fatwas with pagination (views desc) - Async."""
     public_sql = "WHERE f.status = 'published'" if public_only else ""
     
-    async with await db.get_connection() as conn:
-        try:
-            async with conn.execute(f"SELECT COUNT(*) FROM fatwas f {public_sql}") as cursor:
-                row = await cursor.fetchone()
-                total_count = row[0] if row else 0
-                
-            if max_total is not None:
-                total_count = min(total_count, max_total)
-                if offset >= max_total:
-                    return [], total_count
-                limit = min(limit, max_total - offset)
-                if limit <= 0:
-                    return [], total_count
+    conn = await db.get_connection()
+    try:
+        async with conn.execute(f"SELECT COUNT(*) FROM fatwas f {public_sql}") as cursor:
+            row = await cursor.fetchone()
+            total_count = row[0] if row else 0
             
-            async with conn.execute(
-                f"""
-                SELECT f.id
-                FROM fatwas f
-                {public_sql}
-                ORDER BY COALESCE(f.views, 0) DESC, f.fatwa_number DESC
-                LIMIT ? OFFSET ?
-                """,
-                (limit, offset),
-            ) as cursor:
-                rows = await cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Error fetching popular fatwas: {e}")
-            return [], 0
+        if max_total is not None:
+            total_count = min(total_count, max_total)
+            if offset >= max_total:
+                return [], total_count
+            limit = min(limit, max_total - offset)
+            if limit <= 0:
+                return [], total_count
+        
+        async with conn.execute(
+            f"""
+            SELECT f.id
+            FROM fatwas f
+            {public_sql}
+            ORDER BY COALESCE(f.views, 0) DESC, f.fatwa_number DESC
+            LIMIT ? OFFSET ?
+            """,
+            (limit, offset),
+        ) as cursor:
+            rows = await cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Error fetching popular fatwas: {e}")
+        return [], 0
+    finally:
+        await conn.close()
 
     fatwa_ids = [row[0] for row in rows]
     results = await db.get_fatwas_by_ids(fatwa_ids, public_only=public_only)
@@ -397,110 +399,114 @@ async def _fetch_contextual_text_fatwas(
     weights = await _get_ai_weights()
 
     async def _run_query(use_fts: bool):
-        async with await db.get_connection() as conn:
-            try:
-                where_clauses = []
-                where_params = []
-                score_parts = []
-                score_params = []
-                primary_match_parts = []
-                primary_match_params = []
-                from_sql = "FROM fatwas f"
-                from_params = []
-                mode_label = "like"
+        conn = await db.get_connection()
+        try:
+            where_clauses = []
+            where_params = []
+            score_parts = []
+            score_params = []
+            primary_match_parts = []
+            primary_match_params = []
+            from_sql = "FROM fatwas f"
+            from_params = []
+            mode_label = "like"
 
-                if use_fts:
-                    fts_query = _build_fts_or_query(recall_terms, max_terms=6)
-                    if not fts_query:
-                        use_fts = False
-                    else:
-                        mode_label = "fts"
-                        from_sql = "FROM fatwas f JOIN (SELECT rowid AS fid FROM fatwas_fts WHERE fatwas_fts MATCH ? LIMIT 1200) fts ON fts.fid = f.id"
-                        from_params = [fts_query]
+            if use_fts:
+                fts_query = _build_fts_or_query(recall_terms, max_terms=6)
+                if not fts_query:
+                    use_fts = False
+                else:
+                    mode_label = "fts"
+                    from_sql = "FROM fatwas f JOIN (SELECT rowid AS fid FROM fatwas_fts WHERE fatwas_fts MATCH ? LIMIT 1200) fts ON fts.fid = f.id"
+                    from_params = [fts_query]
 
-                if public_only:
-                    where_clauses.append("f.status = 'published'")
-                if excluded_ids:
-                    placeholders = ",".join(["?"] * len(excluded_ids))
-                    where_clauses.append(f"f.id NOT IN ({placeholders})")
-                    where_params.extend(excluded_ids)
+            if public_only:
+                where_clauses.append("f.status = 'published'")
+            if excluded_ids:
+                placeholders = ",".join(["?"] * len(excluded_ids))
+                where_clauses.append(f"f.id NOT IN ({placeholders})")
+                where_params.extend(excluded_ids)
 
-                if not use_fts:
-                    term_blocks = []
-                    for term in recall_terms:
-                        like = f"%{term}%"
-                        term_blocks.append("(REMOVE_TASHKEEL(f.title) LIKE ? OR REMOVE_TASHKEEL(f.question) LIKE ? OR REMOVE_TASHKEEL(f.answer) LIKE ?)")
-                        where_params.extend([like, like, like])
-                    if term_blocks:
-                        where_clauses.append("(" + " OR ".join(term_blocks) + ")")
-
+            if not use_fts:
+                term_blocks = []
                 for term in recall_terms:
                     like = f"%{term}%"
-                    title_w = weights["title_primary"] if term in primary_set else weights["title_secondary"]
-                    question_w = weights["question_primary"] if term in primary_set else weights["question_secondary"]
-                    answer_w = weights["answer_primary"] if term in primary_set else weights["answer_secondary"]
+                    term_blocks.append("(REMOVE_TASHKEEL(f.title) LIKE ? OR REMOVE_TASHKEEL(f.question) LIKE ? OR REMOVE_TASHKEEL(f.answer) LIKE ?)")
+                    where_params.extend([like, like, like])
+                if term_blocks:
+                    where_clauses.append("(" + " OR ".join(term_blocks) + ")")
+
+            for term in recall_terms:
+                like = f"%{term}%"
+                title_w = weights["title_primary"] if term in primary_set else weights["title_secondary"]
+                question_w = weights["question_primary"] if term in primary_set else weights["question_secondary"]
+                answer_w = weights["answer_primary"] if term in primary_set else weights["answer_secondary"]
+                score_parts.extend([
+                    f"CASE WHEN REMOVE_TASHKEEL(f.title) LIKE ? THEN {title_w} ELSE 0 END",
+                    f"CASE WHEN REMOVE_TASHKEEL(f.question) LIKE ? THEN {question_w} ELSE 0 END",
+                    f"CASE WHEN REMOVE_TASHKEEL(f.answer) LIKE ? THEN {answer_w} ELSE 0 END",
+                ])
+                score_params.extend([like, like, like])
+
+            for term in primary_terms:
+                like = f"%{term}%"
+                primary_match_parts.append("CASE WHEN (REMOVE_TASHKEEL(f.title) LIKE ? OR REMOVE_TASHKEEL(f.question) LIKE ? OR REMOVE_TASHKEEL(f.answer) LIKE ?) THEN 1 ELSE 0 END")
+                primary_match_params.extend([like, like, like])
+
+            if user_query:
+                phrase = remove_tashkeel(user_query).strip()
+                if 10 <= len(phrase) <= 120:
+                    phrase_like = f"%{phrase}%"
                     score_parts.extend([
-                        f"CASE WHEN REMOVE_TASHKEEL(f.title) LIKE ? THEN {title_w} ELSE 0 END",
-                        f"CASE WHEN REMOVE_TASHKEEL(f.question) LIKE ? THEN {question_w} ELSE 0 END",
-                        f"CASE WHEN REMOVE_TASHKEEL(f.answer) LIKE ? THEN {answer_w} ELSE 0 END",
+                        f"CASE WHEN REMOVE_TASHKEEL(f.title) LIKE ? THEN {weights['phrase_title']} ELSE 0 END",
+                        f"CASE WHEN REMOVE_TASHKEEL(f.question) LIKE ? THEN {weights['phrase_question']} ELSE 0 END",
+                        f"CASE WHEN REMOVE_TASHKEEL(f.answer) LIKE ? THEN {weights['phrase_answer']} ELSE 0 END",
                     ])
-                    score_params.extend([like, like, like])
+                    score_params.extend([phrase_like, phrase_like, phrase_like])
 
-                for term in primary_terms:
-                    like = f"%{term}%"
-                    primary_match_parts.append("CASE WHEN (REMOVE_TASHKEEL(f.title) LIKE ? OR REMOVE_TASHKEEL(f.question) LIKE ? OR REMOVE_TASHKEEL(f.answer) LIKE ?) THEN 1 ELSE 0 END")
-                    primary_match_params.extend([like, like, like])
+            where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+            score_sql = " + ".join(score_parts) if score_parts else "0"
+            primary_match_sql = " + ".join(primary_match_parts) if primary_match_parts else "0"
 
-                if user_query:
-                    phrase = remove_tashkeel(user_query).strip()
-                    if 10 <= len(phrase) <= 120:
-                        phrase_like = f"%{phrase}%"
-                        score_parts.extend([
-                            f"CASE WHEN REMOVE_TASHKEEL(f.title) LIKE ? THEN {weights['phrase_title']} ELSE 0 END",
-                            f"CASE WHEN REMOVE_TASHKEEL(f.question) LIKE ? THEN {weights['phrase_question']} ELSE 0 END",
-                            f"CASE WHEN REMOVE_TASHKEEL(f.answer) LIKE ? THEN {weights['phrase_answer']} ELSE 0 END",
-                        ])
-                        score_params.extend([phrase_like, phrase_like, phrase_like])
+            ranked_sql = f"SELECT f.id, f.fatwa_number, ({score_sql}) AS relevance_score, ({primary_match_sql}) AS primary_match_count {from_sql} {where_sql}"
+            filter_clauses = ["relevance_score >= ?"]
+            filter_params = [min_score_required]
+            if min_primary_matches > 0:
+                filter_clauses.append("primary_match_count >= ?")
+                filter_params.append(min_primary_matches)
 
-                where_sql = (" WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
-                score_sql = " + ".join(score_parts) if score_parts else "0"
-                primary_match_sql = " + ".join(primary_match_parts) if primary_match_parts else "0"
+            filtered_sql = f"SELECT id, fatwa_number, relevance_score, primary_match_count FROM ({ranked_sql}) ranked WHERE {' AND '.join(filter_clauses)}"
+            metric_params = score_params + primary_match_params + from_params + where_params
 
-                ranked_sql = f"SELECT f.id, f.fatwa_number, ({score_sql}) AS relevance_score, ({primary_match_sql}) AS primary_match_count {from_sql} {where_sql}"
-                filter_clauses = ["relevance_score >= ?"]
-                filter_params = [min_score_required]
-                if min_primary_matches > 0:
-                    filter_clauses.append("primary_match_count >= ?")
-                    filter_params.append(min_primary_matches)
+            if max_total is not None and offset >= max_total:
+                return [], max_total, mode_label
+            effective_limit = min(limit, max_total - offset) if max_total is not None else limit
+            if effective_limit <= 0:
+                return [], max_total or 0, mode_label
 
-                filtered_sql = f"SELECT id, fatwa_number, relevance_score, primary_match_count FROM ({ranked_sql}) ranked WHERE {' AND '.join(filter_clauses)}"
-                metric_params = score_params + primary_match_params + from_params + where_params
-
-                if max_total is not None and offset >= max_total:
-                    return [], max_total, mode_label
-                effective_limit = min(limit, max_total - offset) if max_total is not None else limit
-                if effective_limit <= 0:
-                    return [], max_total or 0, mode_label
-
-                fetch_limit = effective_limit + 1
-                async with conn.execute(f"{filtered_sql} ORDER BY relevance_score DESC, primary_match_count DESC, fatwa_number DESC LIMIT ? OFFSET ?", metric_params + filter_params + [fetch_limit, offset]) as cursor:
-                    rows_local = await cursor.fetchall()
-                
-                has_more = len(rows_local) > effective_limit
-                if has_more: rows_local = rows_local[:effective_limit]
-                total_count_local = offset + len(rows_local) + (1 if has_more else 0)
-                if max_total is not None: total_count_local = min(max_total, total_count_local)
-                return rows_local, total_count_local, mode_label
-            except Exception as e:
-                logger.error(f"Error in _run_query: {e}")
-                raise
+            fetch_limit = effective_limit + 1
+            async with conn.execute(f"{filtered_sql} ORDER BY relevance_score DESC, primary_match_count DESC, fatwa_number DESC LIMIT ? OFFSET ?", metric_params + filter_params + [fetch_limit, offset]) as cursor:
+                rows_local = await cursor.fetchall()
+            
+            has_more = len(rows_local) > effective_limit
+            if has_more: rows_local = rows_local[:effective_limit]
+            total_count_local = offset + len(rows_local) + (1 if has_more else 0)
+            if max_total is not None: total_count_local = min(max_total, total_count_local)
+            return rows_local, total_count_local, mode_label
+        except Exception as e:
+            logger.error(f"Error in _run_query: {e}")
+            raise
+        finally:
+            await conn.close()
 
     fts_available = False
-    async with await db.get_connection() as conn_check:
-        try:
-            async with conn_check.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fatwas_fts'") as cursor:
-                fts_available = await cursor.fetchone() is not None
-        except Exception: pass
+    conn_check = await db.get_connection()
+    try:
+        async with conn_check.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='fatwas_fts'") as cursor:
+            fts_available = await cursor.fetchone() is not None
+    except Exception: pass
+    finally:
+        await conn_check.close()
 
     try:
         rows, total_count, query_mode = await _run_query(use_fts=fts_available)
@@ -645,35 +651,37 @@ async def _fetch_smart_fatwas(query_text, use_title, use_text, scholar_ids, publ
     query_text = (query_text or '').strip() or None
     normalized_scholar_ids = [int(sid) for sid in (scholar_ids or []) if str(sid).isdigit()]
     
-    async with await db.get_connection() as conn:
-        try:
-            where_clauses = []
-            params = []
-            if public_only: where_clauses.append("f.status = 'published'")
-            if normalized_scholar_ids:
-                where_clauses.append(f"f.scholar_id IN ({','.join(['?']*len(normalized_scholar_ids))})")
-                params.extend(normalized_scholar_ids)
-            if query_text:
-                text_clauses = []
-                if use_title:
-                    text_clauses.append("REMOVE_TASHKEEL(f.title) LIKE ?")
-                    params.append(f"%{query_text}%")
-                if use_text:
-                    text_clauses.extend(["REMOVE_TASHKEEL(f.question) LIKE ?", "REMOVE_TASHKEEL(f.answer) LIKE ?"])
-                    params.extend([f"%{query_text}%", f"%{query_text}%"])
-                if text_clauses: where_clauses.append('(' + ' OR '.join(text_clauses) + ')')
-            
-            where_sql = (' WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''
-            
-            async with conn.execute(f"SELECT COUNT(*) FROM fatwas f {where_sql}", params) as cursor:
-                row = await cursor.fetchone()
-                total_count = row[0] if row else 0
-            
-            async with conn.execute(f"SELECT f.id FROM fatwas f {where_sql} ORDER BY f.fatwa_number DESC LIMIT ? OFFSET ?", params + [limit, offset]) as cursor:
-                rows = await cursor.fetchall()
-        except Exception as e:
-            logger.error(f"Error in _fetch_smart_fatwas: {e}")
-            return [], 0
+    conn = await db.get_connection()
+    try:
+        where_clauses = []
+        params = []
+        if public_only: where_clauses.append("f.status = 'published'")
+        if normalized_scholar_ids:
+            where_clauses.append(f"f.scholar_id IN ({','.join(['?']*len(normalized_scholar_ids))})")
+            params.extend(normalized_scholar_ids)
+        if query_text:
+            text_clauses = []
+            if use_title:
+                text_clauses.append("REMOVE_TASHKEEL(f.title) LIKE ?")
+                params.append(f"%{query_text}%")
+            if use_text:
+                text_clauses.extend(["REMOVE_TASHKEEL(f.question) LIKE ?", "REMOVE_TASHKEEL(f.answer) LIKE ?"])
+                params.extend([f"%{query_text}%", f"%{query_text}%"])
+            if text_clauses: where_clauses.append('(' + ' OR '.join(text_clauses) + ')')
+        
+        where_sql = (' WHERE ' + ' AND '.join(where_clauses)) if where_clauses else ''
+        
+        async with conn.execute(f"SELECT COUNT(*) FROM fatwas f {where_sql}", params) as cursor:
+            row = await cursor.fetchone()
+            total_count = row[0] if row else 0
+        
+        async with conn.execute(f"SELECT f.id FROM fatwas f {where_sql} ORDER BY f.fatwa_number DESC LIMIT ? OFFSET ?", params + [limit, offset]) as cursor:
+            rows = await cursor.fetchall()
+    except Exception as e:
+        logger.error(f"Error in _fetch_smart_fatwas: {e}")
+        return [], 0
+    finally:
+        await conn.close()
 
     fatwa_ids = [r[0] for r in rows]
     results = await db.get_fatwas_by_ids(fatwa_ids, public_only=public_only)
