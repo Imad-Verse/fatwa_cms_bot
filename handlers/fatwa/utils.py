@@ -107,11 +107,12 @@ def _build_view_back_button(query, context: ContextTypes.DEFAULT_TYPE, fatwa_id:
         if ctx_view:
             data = ctx_view
 
-    # Search results
-    if data.endswith('_search'):
-        if context.user_data.get('last_search_results'):
-            last_page = context.user_data.get('last_search_page', 0)
-            return InlineKeyboardButton("🔙 رجوع للنتائج", callback_data=f"res_page_{last_page}")
+    # Search results or list context
+    if data.endswith('_search') or data.endswith('_list'):
+        list_ctx = context.user_data.get('last_list_context')
+        if list_ctx:
+            page = list_ctx.get('page', 0)
+            return InlineKeyboardButton("🔙 رجوع للنتائج", callback_data=f"res_page_{page}")
         return InlineKeyboardButton("🔙 رجوع للبحث", callback_data="search_fatwas")
 
     parts = data.split('_')

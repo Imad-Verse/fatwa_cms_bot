@@ -210,5 +210,36 @@ async def handle_search_source_query(update: Update, context: ContextTypes.DEFAU
     return BotState.STATE_SEARCH
 
 async def show_scholar_fatwas_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Proxy for direct links or similar
+    """عرض فتاوى عالم محدد بناءً على معرفه (يستخدم من أزرار عرض الفتوى)"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Pattern: scholar_fatwas_{scholar_id}_{current_fatwa_id}
+    parts = query.data.split('_')
+    scholar_id = int(parts[2])
+    
+    scholar = await db.get_scholar_by_id(scholar_id)
+    if not scholar:
+        await query.answer("⚠️ لم يتم العثور على العالم.", show_alert=True)
+        return BotState.STATE_SEARCH
+
+    # جلب النتائج (أول 5 فتاوى)
+    public_only = not await bot_db.is_admin(update.effective_user.id)
+    results, total = await db.get_all_fatwas(scholar_id=scholar_id, status='published' if public_only else None, limit=5, offset=0)
+    
+    if not results:
+        await query.answer("📭 لا توجد فتاوى لهذا العالم حالياً.", show_alert=True)
+        return BotState.STATE_SEARCH
+
+    # حفظ الحالة للتنقل
+    context.user_data['current_search_state'] = {
+        'type': 'scholar',
+        'params': {
+            'scholar_id': scholar_id, 
+            'scholar_name': scholar['name'], 
+            'public': public_only
+        }
+    }
+    
+    await display_search_results(update, context, results, f"فتاوى الشيخ: {scholar['name']}", total, is_callback=True, back_callback="search_scholar")
     return BotState.STATE_SEARCH

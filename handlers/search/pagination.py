@@ -11,6 +11,12 @@ logger = logging.getLogger(__name__)
 
 async def display_search_results(update, context, results, title, total_count, is_callback=False, page=0, back_callback="search_fatwas", back_label=None):
     """عرض نتائج البحث بتنسيق عصري واحترافي."""
+    # حفظ سياق القائمة للرجوع إليها عند عرض فتوى محددة
+    context.user_data['last_list_context'] = {
+        'page': page,
+        'back_callback': back_callback,
+        'back_label': back_label or "🔙 رجوع"
+    }
     if not results:
         text = f"⚠️ **{title}**\n\nلم يتم العثور على أي نتائج تطابق بحثك."
         keyboard = [[InlineKeyboardButton(back_label or "🔙 رجوع", callback_data=back_callback)]]
@@ -47,7 +53,7 @@ async def display_search_results(update, context, results, title, total_count, i
     # Fatwa quick view buttons (Grouped by 2)
     view_row = []
     for fatwa in results:
-        btn = InlineKeyboardButton(f"📖 عرض فتوى #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")
+        btn = InlineKeyboardButton(f"📖 عرض فتوى #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}_list")
         view_row.append(btn)
         if len(view_row) == 2:
             keyboard.append(view_row)
@@ -109,7 +115,7 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
         db = FatwaDatabaseManager()
         results, total_count = await db.get_all_fatwas(scholar_id=params.get('scholar_id'), status='published' if params['public'] else None, limit=limit, offset=offset)
         title = f"فتاوى الشيخ: {params.get('scholar_name')}"
-        back_callback = f"scholar_view_{params.get('scholar_id')}"
+        back_callback = "search_scholar"
     elif stype == 'category':
         from core.database import FatwaDatabaseManager
         db = FatwaDatabaseManager()
@@ -122,7 +128,7 @@ async def handle_search_pagination(update: Update, context: ContextTypes.DEFAULT
         # Note: source filtering might need specific logic if not in db.search_fatwas
         results, total_count = await db.get_all_fatwas(source_id=params.get('source_id'), status='published' if params['public'] else None, limit=limit, offset=offset)
         title = f"فتاوى من مصدر: {params.get('source_name')}"
-        back_callback = f"manage_source_{params.get('source_id')}"
+        back_callback = "search_source"
     elif stype == 'smart':
         results, total_count = await _fetch_smart_fatwas(params.get('query'), params.get('use_title'), params.get('use_text'), params.get('scholars', []), params.get('public', True), limit, offset)
         title = "نتائج البحث المتقدم"
