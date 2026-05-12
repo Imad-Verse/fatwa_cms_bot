@@ -6,6 +6,7 @@ from telegram.ext import (
 )
 from core.database import FatwaDatabaseManager
 from core.bot_db import BotDatabaseManager
+from core.config import BotState
 from core.utils import (
     sanitize_input, create_main_keyboard, 
     back_to_categories_keyboard, escape_markdown,
@@ -157,7 +158,7 @@ async def handle_edit_category_selection(update: Update, context: ContextTypes.D
         if not any(c['category_id'] == cat_id and c['slot_index'] == slot for c in cls): cls.append({'category_id': cat_id, 'topic_ids': [], 'slot_index': slot})
         await db.update_fatwa(fatwa_id, {'classifications': cls}); context.user_data['edit_topic_cat_id'] = cat_id
         return await show_edit_topics_step(update, context, cat_id=cat_id)
-    return STATE_EDIT_CATEGORY
+    return BotState.STATE_EDIT_CATEGORY
 
 async def show_edit_topics_step(update, context, cat_id=None, page=0, search_query=None):
     ITEMS_PER_PAGE = 8; offset = page * ITEMS_PER_PAGE; cat_row = await db.get_category(cat_id)

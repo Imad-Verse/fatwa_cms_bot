@@ -1,6 +1,7 @@
 import logging
 import aiosqlite
 from typing import Dict, List, Optional, Tuple
+from core.utils import cached_async
 
 logger = logging.getLogger(__name__)
 
