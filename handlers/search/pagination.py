@@ -44,9 +44,16 @@ async def display_search_results(update, context, results, title, total_count, i
     if nav_row:
         keyboard.insert(0, nav_row) # Top
 
-    # Fatwa quick view buttons
+    # Fatwa quick view buttons (Grouped by 2)
+    view_row = []
     for fatwa in results:
-        keyboard.append([InlineKeyboardButton(f"📖 عرض #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")])
+        btn = InlineKeyboardButton(f"📖 عرض فتوى #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")
+        view_row.append(btn)
+        if len(view_row) == 2:
+            keyboard.append(view_row)
+            view_row = []
+    if view_row:
+        keyboard.append(view_row)
 
     if nav_row:
         keyboard.append(nav_row)    # Bottom

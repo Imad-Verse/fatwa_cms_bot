@@ -184,7 +184,7 @@ async def perform_search_number(update: Update, context: ContextTypes.DEFAULT_TY
     text += format_fatwa_card(fatwa, use_markdown=True)
     
     keyboard = [
-        [InlineKeyboardButton(f"📖 عرض #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")],
+        [InlineKeyboardButton(f"📖 عرض فتوى #{fatwa['fatwa_number']}", callback_data=f"view_{fatwa['id']}")],
         [InlineKeyboardButton("🔙 رجوع للبحث", callback_data="search_fatwas")]
     ]
     

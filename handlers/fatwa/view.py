@@ -207,7 +207,7 @@ async def show_related_fatwas(update: Update, context: ContextTypes.DEFAULT_TYPE
         for item in related:
             fid = item['id']
             num = item.get('fatwa_number', fid)
-            row.append(InlineKeyboardButton(f"📖 عرض الفتوى #{num}", callback_data=f"view_{fid}"))
+            row.append(InlineKeyboardButton(f"📖 عرض فتوى #{num}", callback_data=f"view_{fid}"))
             if len(row) == 2:
                 keyboard.append(row)
                 row = []

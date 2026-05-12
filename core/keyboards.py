@@ -84,7 +84,7 @@ def create_pagination_keyboard(
 
 def create_fatwa_card_keyboard(fatwa_id: int, fatwa_number: int) -> list:
     """Create standard buttons for a fatwa card in a list."""
-    return [InlineKeyboardButton(f"📖 عرض الفتوى #{fatwa_number}", callback_data=f"view_{fatwa_id}_search")]
+    return [InlineKeyboardButton(f"📖 عرض فتوى #{fatwa_number}", callback_data=f"view_{fatwa_id}_search")]
 
 def create_published_fatwa_keyboard(
     fatwa: dict,
