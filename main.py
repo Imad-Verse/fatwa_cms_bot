@@ -13,22 +13,8 @@ from telegram.ext import (
     ApplicationBuilder, ContextTypes, TypeHandler
 )
 
-# Workarounds for PTB 20.8 __slots__ bugs (Updater + Application weakref)
-import telegram.ext._updater as _ptb_updater
-import telegram.ext._application as _ptb_application
-import telegram.ext._applicationbuilder as _ptb_builder
-
-if "_Updater__polling_cleanup_cb" not in getattr(_ptb_updater.Updater, "__slots__", ()):
-    class _PatchedUpdater(_ptb_updater.Updater):
-        __slots__ = ("_Updater__polling_cleanup_cb",)
-    _ptb_updater.Updater = _PatchedUpdater
-    _ptb_builder.Updater = _PatchedUpdater
-
-if "__weakref__" not in getattr(_ptb_application.Application, "__slots__", ()):
-    class _PatchedApplication(_ptb_application.Application):
-        __slots__ = ("__weakref__",)
-    _ptb_application.Application = _PatchedApplication
-    _ptb_builder.Application = _PatchedApplication
+# 2. Imports and Configuration
+from core.config import TELEGRAM_TOKEN, PROXY_URL, REQUEST_TIMEOUT, LOGS_DIR, OWNER_ID, DEVELOPER_IDENTITY
 
 from core.config import TELEGRAM_TOKEN, PROXY_URL, REQUEST_TIMEOUT, LOGS_DIR, OWNER_ID, DEVELOPER_IDENTITY
 from core.utils import SingletonLock
