@@ -26,38 +26,12 @@ from handlers.general import maintenance_mode_guard
 from handlers.registry import register_all_handlers
 from handlers.channels import daily_fatwa_job, weekly_fatwa_report_job
 
-import logging.handlers
-
-# إعداد السجلات (Logging)
-if not os.path.exists(LOGS_DIR):
-    os.makedirs(LOGS_DIR)
-
-log_formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-log_file = os.path.join(LOGS_DIR, "bot.log")
-
-# تدوير السجلات (Log Rotation): 10MB لكل ملف، مع الاحتفاظ بـ 5 نسخ قديمة
-file_handler = logging.handlers.RotatingFileHandler(
-    log_file, 
-    maxBytes=10*1024*1024, 
-    backupCount=5, 
-    encoding='utf-8'
-)
-file_handler.setFormatter(log_formatter)
-
-stream_handler = logging.StreamHandler()
-stream_handler.setFormatter(log_formatter)
-
-logging.basicConfig(
-    level=logging.INFO,
-    handlers=[file_handler, stream_handler]
-)
+from core.logger import logger
 
 # إسكات السجلات المزعجة من المكتبات الخارجية
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
-
-logger = logging.getLogger(__name__)
 async def verify_license(app):
     """التحقق من ترخيص تشغيل البوت وحماية حقوق المطور."""
     try:
@@ -108,10 +82,12 @@ async def main():
     except Exception as e:
         logger.error(f"Backfill created_at failed: {e}")
 
-    # 🎨 Beautiful English Startup Messages
-    print("\n" + "="*50)
-    print("   [ FATWA BOT SYSTEM ]")
-    print("="*50 + "\n")
+    log_level = os.getenv("TITAN_LOG_LEVEL", "INFO").upper()
+    if log_level in ["INFO", "DEBUG"]:
+        print("\n" + "="*50)
+        print("   [ FATWA BOT SYSTEM ]")
+        print("="*50 + "\n")
+    
     logger.info("System is initializing...")
 
     # 1. التحقق من عدم تكرار التشغيل (Socket Lock)
@@ -190,10 +166,11 @@ async def main():
     await app.start()
     await app.updater.start_polling()
 
-    logger.info("Bot is online and ready to serve!")
-    print("\n" + "="*50)
-    print("      [ BOT IS RUNNING ]")
-    print("="*50 + "\n")
+    logger.success("Bot is online and ready to serve!")
+    if log_level in ["INFO", "DEBUG"]:
+        print("\n" + "="*50)
+        print("      [ BOT IS RUNNING ]")
+        print("="*50 + "\n")
 
     # الانتظار بشكل آمن
     try:
