@@ -9,6 +9,9 @@ __pycache__/
 .env
 
 # Data and Databases
+!data/
+data/*
+!data/*.db
+!data/*.sqlite
 data/backups/
-data/bot_internal.db
-# Note: fatwa_bot.db is tracked and NOT ignored
+

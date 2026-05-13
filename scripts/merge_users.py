@@ -4,13 +4,13 @@ import logging
 from datetime import datetime
 
 # Configuration
-TARGET_DB = r"d:\Projects\Bots\Fatwa_Cms_App\fatwa_cms_bot\data\bot_internal.db"
+TARGET_DB = r"D:\Projects\Bots\fatwa_cms_bot\data\bot_internal.db"
 SOURCE_DBS = [
     {
         "name": "Titan_PDF_Bot",
         "path": r"D:\Projects\Bots\Titan_PDF_Bot\storage\database\titan_v8_ultimate.db",
         "user_query": "SELECT user_id, username, first_name, join_date, is_blocked FROM users",
-        "channel_query": None # Doesn't seem to have channels
+        "channel_query": None 
     },
     {
         "name": "TitanSv_bot",
@@ -59,7 +59,6 @@ def migrate():
                 rows = source_cursor.fetchall()
                 for row in rows:
                     user_id, username, name_val, joined, blocked = row
-                    # Ensure user_id is integer
                     try:
                         user_id = int(user_id)
                     except:
@@ -86,7 +85,6 @@ def migrate():
                     except:
                         continue
                     
-                    # Target channels schema: chat_id, title, username, type, status, added_at
                     target_cursor.execute("""
                         INSERT OR IGNORE INTO channels (chat_id, title, username, type, status, added_at)
                         VALUES (?, ?, ?, ?, ?, ?)
@@ -102,9 +100,12 @@ def migrate():
     target_conn.close()
 
     logger.info("========================================")
-    logger.info(f"Migration completed!")
-    logger.info(f"Total new users added: {total_users_added}")
-    logger.info(f"Total new channels added: {total_channels_added}")
+    if total_users_added == 0 and total_channels_added == 0:
+        logger.info("No new data to merge. Database is already up to date.")
+    else:
+        logger.info(f"Migration completed!")
+        logger.info(f"Total new users added: {total_users_added}")
+        logger.info(f"Total new channels added: {total_channels_added}")
     logger.info("========================================")
 
 if __name__ == "__main__":
