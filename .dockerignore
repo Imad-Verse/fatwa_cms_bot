@@ -1,0 +1,16 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.git/
+.gitignore
+logs/
+uploads/
+temp/
+data/backups/
+data/bot_internal.db
+.titan_runtime/
+desktop.ini
+*.ico

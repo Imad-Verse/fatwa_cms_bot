@@ -191,29 +191,29 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض قائمة بوتاتنا"""
     text = (
         "هذه قائمة البوتات الخاصة بنا:\n\n"
-        "1- 🤖 **إدارة الفتاوى | Fatwa CMS:**\n"
+        "1- 🤖 <b>إدارة الفتاوى | Fatwa CMS:</b>\n"
         "مشروع خيري يهدف لأرشفة ونشر فتاوى العلماء الثقات، وتسهيل الوصول إليها عبر التليجرام.\n\n"
-        "🎯 **ماذا يمكنه أن يفعل لك؟**\n"
+        "🎯 <b>ماذا يمكنه أن يفعل لك؟</b>\n"
         "• محرك بحث سريع ودقيق.\n"
         "• تصنيف موضوعي شامل.\n"
         "• دعم الوسائط المتعددة (نص، صوت، روابط).\n"
         "• إمكانية النشر التلقائي للقنوات والمجموعات.\n\n"
-        "🔥 جربه الآن: @Fatwa\\_CMS\\_Bot\n\n"
-        "2- 🤖 **العملاق للمستندات | Titan Pdf Pro :**\n\n"
-        "🎯 **ماذا يمكنه أن يفعل لك؟**\n\n"
+        "🔥 جربه الآن: @Fatwa_CMS_Bot\n\n"
+        "2- 🤖 <b>العملاق للمستندات | Titan Pdf Pro :</b>\n\n"
+        "🎯 <b>ماذا يمكنه أن يفعل لك؟</b>\n\n"
         "بوت متخصص في معالجة ملفات PDF والصور والنصوص، يقوم بالعديد من المهام:\n"
         "• تحويل الصور إلى PDF والعكس\n"
         "• دمج وتقسيم ملفات PDF\n"
         "• حماية وضغط الملفات\n"
         "• إضافة علامات مائية والمزيد\n\n"
         "🔥 جربه الآن: @TitanPdfBot\n\n"
-        "3- 🤖 **العملاق للتحميل | Titan Downloader :**\n\n"
-        "🎯 **ماذا يمكنه أن يفعل لك؟**\n\n"
+        "3- 🤖 <b>العملاق للتحميل | Titan Downloader :</b>\n\n"
+        "🎯 <b>ماذا يمكنه أن يفعل لك؟</b>\n\n"
         "يتيح لك تحميل فيديوهاتك المفضلة بأعلى جودة ممكنة، بالإضافة إلى استخراج الصوت منها بكل سهولة وسرعة، حيث يُعتبر سريعًا ومجانيًا وسهل الاستخدام ✅️. يمكنه تحميل الفيديوهات القصيرة من منصات مثل يوتيوب، تيك توك، فيسبوك، وإنستجرام.\n\n"
-        "⛔️ **تنبيه:** لا تستخدم البوت فيما يغضب الله عز وجل كتحميل الموسيقى والصور المحرمة!\n\n"
+        "⛔️ <b>تنبيه:</b> لا تستخدم البوت فيما يغضب الله عز وجل كتحميل الموسيقى والصور المحرمة!\n\n"
         "🔥 جربه الآن: @TitanSvBot\n\n"
-        "4- 🤖 **بوت فذكر الدعوي | Fadhakir Bot :**\n\n"
-        "🎯 **ماذا يمكنه أن يفعل لك؟**\n\n"
+        "4- 🤖 <b>بوت فذكر الدعوي | Fadhakir Bot :</b>\n\n"
+        "🎯 <b>ماذا يمكنه أن يفعل لك؟</b>\n\n"
         "بوت \"فَذَكِّر\" رفيقك اليومي للتذكير بالصلوات، الأذكار، والسنن، ونشر الفوائد والفيديوهات الدعوية، أضفه لقناتك أو مجموعتك لنشر الخير.\n\n"
         "🔥 جربه الآن: @Fadhakir_bot\n"
     )
@@ -228,9 +228,9 @@ async def our_bots(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if update.callback_query:
         await update.callback_query.answer()
-        await safe_edit_message_text(update.callback_query, text, reply_markup=reply_markup, parse_mode='Markdown')
+        await safe_edit_message_text(update.callback_query, text, reply_markup=reply_markup, parse_mode='HTML')
     else:
-        await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='Markdown')
+        await safe_reply_text(update, text, reply_markup=reply_markup, parse_mode='HTML')
 
 async def help_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """عرض المساعدة والمعلومات"""
