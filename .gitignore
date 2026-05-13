@@ -5,7 +5,10 @@ uploads/
 temp/
 .titan_runtime/
 *.pyc
+*.py[cod]
+*$py.class
 __pycache__/
+
 .env
 
 # Data and Databases
