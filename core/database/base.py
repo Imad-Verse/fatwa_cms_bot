@@ -2,6 +2,7 @@ import aiosqlite
 import asyncio
 import logging
 import os
+import sqlite3
 from datetime import datetime
 from core.config import DB_PATH
 
@@ -264,3 +265,26 @@ class DatabaseBase:
                 await conn.close()
         
         await self.execute_with_retry(_do_vacuum)
+    
+    async def backup_database(self, backup_path: str) -> bool:
+        """Create a backup of the current database (Synchronous part wrapped in executor)."""
+        def _do_backup():
+            try:
+                db_file = getattr(self, 'db_path', getattr(self, 'db_name', 'fatwa.db'))
+                if not os.path.exists(db_file):
+                    logger.error(f"Backup source file not found: {db_file}")
+                    return False
+                
+                src_conn = sqlite3.connect(db_file, timeout=30.0)
+                dst_conn = sqlite3.connect(backup_path, timeout=30.0)
+                try:
+                    src_conn.backup(dst_conn)
+                    return True
+                finally:
+                    dst_conn.close()
+                    src_conn.close()
+            except Exception as e:
+                logger.error(f"Backup failed for {db_file}: {e}")
+                return False
+        
+        return await asyncio.get_event_loop().run_in_executor(None, _do_backup)

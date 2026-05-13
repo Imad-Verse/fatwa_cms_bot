@@ -3,6 +3,7 @@ import html
 import logging
 import os
 import re
+import time
 from datetime import datetime, timedelta, timezone, time as dt_time
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -106,8 +107,28 @@ async def show_statistics(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if query: await safe_edit_message_text(query, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
         else: await safe_reply_text(update, error_msg, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 لوحة الإدارة", callback_data="admin_panel")]]))
 
+def cleanup_old_backups(backup_dir: str, max_age_days: int = 7) -> int:
+    """حذف النسخ الاحتياطية التي مر عليها أكثر من أسبوع."""
+    try:
+        now = time.time()
+        max_age_seconds = max_age_days * 86400
+        count = 0
+        if not os.path.exists(backup_dir):
+            return 0
+            
+        for f in os.listdir(backup_dir):
+            path = os.path.join(backup_dir, f)
+            if os.path.isfile(path):
+                if os.stat(path).st_mtime < now - max_age_seconds:
+                    os.remove(path)
+                    count += 1
+        return count
+    except Exception as e:
+        logger.error(f"Error during backup cleanup: {e}")
+        return 0
+
 async def backup_database_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """إنشاء نسخة احتياطية (DB + JSON)"""
+    """إنشاء نسخ احتياطية لقواعد البيانات (الفتاوى + المستخدمين) وإرسالها للمدير"""
     query = update.callback_query
     if not await bot_db.is_admin(update.effective_user.id):
         await query.answer("❌ هذا القسم للمسؤولين فقط", show_alert=True)
@@ -116,35 +137,51 @@ async def backup_database_handler(update: Update, context: ContextTypes.DEFAULT_
 
     # اسم الملف مع التاريخ
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    db_filename = f"fatwa_backup_{timestamp}.db"
-    json_filename = f"fatwa_backup_{timestamp}.json"
+    
+    # 1. قاعدة بيانات الفتاوى (DB + JSON)
+    fatwa_db_filename = f"fatwa_backup_{timestamp}.db"
+    fatwa_json_filename = f"fatwa_backup_{timestamp}.json"
+    fatwa_db_path = os.path.join(BACKUP_DIR, fatwa_db_filename)
+    fatwa_json_path = os.path.join(BACKUP_DIR, fatwa_json_filename)
 
-    db_path = os.path.join(BACKUP_DIR, db_filename)
-    json_path = os.path.join(BACKUP_DIR, json_filename)
+    success_fatwa_db = await db.backup_database(fatwa_db_path)
+    success_fatwa_json = await db.export_json(fatwa_json_path)
 
-    success_db = await db.backup_database(db_path)
-    success_json = await db.export_json(json_path)
+    # 2. قاعدة بيانات البوت (المستخدمين والقنوات والمجموعات)
+    bot_db_filename = f"bot_internal_backup_{timestamp}.db"
+    bot_db_path = os.path.join(BACKUP_DIR, bot_db_filename)
+    success_bot_db = await bot_db.backup_database(bot_db_path)
 
-    if success_db:
-        with open(db_path, "rb") as f:
-            await query.message.reply_document(
-                document=f,
-                caption=f"✅ نسخة قاعدة البيانات: {timestamp}"
-            )
-
-    if success_json:
-        with open(json_path, "rb") as f:
-            await query.message.reply_document(
-                document=f,
-                caption=f"✅ نسخة JSON: {timestamp}"
-            )
-
-    if not success_db and not success_json:
+    if not success_fatwa_db and not success_fatwa_json and not success_bot_db:
         await safe_edit_message_text(query, "❌ فشل النسخ الاحتياطي بالكامل.")
-    elif not success_db:
-        await safe_reply_text(query.message, "⚠️ فشل نسخ قاعدة البيانات (تم نسخ JSON فقط).")
-    elif not success_json:
-        await safe_reply_text(query.message, "⚠️ فشل نسخ JSON (تم نسخ قاعدة البيانات فقط).")
+        return
+
+    # إرسال الملفات للمدير
+    if success_fatwa_db:
+        with open(fatwa_db_path, "rb") as f:
+            await query.message.reply_document(
+                document=f,
+                caption=f"✅ نسخة قاعدة بيانات الفتاوى (DB): {timestamp}"
+            )
+
+    if success_fatwa_json:
+        with open(fatwa_json_path, "rb") as f:
+            await query.message.reply_document(
+                document=f,
+                caption=f"✅ نسخة قاعدة بيانات الفتاوى (JSON): {timestamp}"
+            )
+
+    if success_bot_db:
+        with open(bot_db_path, "rb") as f:
+            await query.message.reply_document(
+                document=f,
+                caption=f"✅ نسخة قاعدة بيانات البوت (المستخدمين/القنوات/المجموعات): {timestamp}"
+            )
+
+    # 3. تنظيف النسخ القديمة
+    deleted_count = cleanup_old_backups(BACKUP_DIR)
+    if deleted_count > 0:
+        await query.message.reply_text(f"🧹 تم تنظيف {deleted_count} نسخة احتياطية قديمة (أقدم من أسبوع).")
 
 # ==================== إدارة الروابط (Missing Links) ====================
 

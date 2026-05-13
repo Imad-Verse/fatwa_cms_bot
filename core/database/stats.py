@@ -106,27 +106,6 @@ class StatsMixin:
         stats = await self.get_statistics()
         return stats['total_views']
 
-    async def backup_database(self, backup_path: str) -> bool:
-        """Create a backup of the SQLite database (Synchronous part wrapped in executor)."""
-        def _do_backup():
-            try:
-                db_file = getattr(self, 'db_path', getattr(self, 'db_name', 'fatwa.db'))
-                if not os.path.exists(db_file):
-                    return False
-                
-                src_conn = sqlite3.connect(db_file, timeout=30.0)
-                dst_conn = sqlite3.connect(backup_path, timeout=30.0)
-                try:
-                    src_conn.backup(dst_conn)
-                    return True
-                finally:
-                    dst_conn.close()
-                    src_conn.close()
-            except Exception as e:
-                logger.error(f"Backup failed: {e}")
-                return False
-        
-        return await asyncio.get_event_loop().run_in_executor(None, _do_backup)
 
     async def export_json(self, json_path: str) -> bool:
         """Export fatwas database to JSON."""
