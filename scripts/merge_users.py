@@ -4,23 +4,23 @@ import logging
 from datetime import datetime
 
 # Configuration
-TARGET_DB = r"D:\Projects\Bots\fatwa_cms_bot\data\bot_internal.db"
+TARGET_DB = r"D:\Projects\Bots\fatwacms-bot\data\bot_internal.db"
 SOURCE_DBS = [
     {
         "name": "Titan_PDF_Bot",
-        "path": r"D:\Projects\Bots\Titan_PDF_Bot\storage\database\titan_v8_ultimate.db",
+        "path": r"D:\Projects\Bots\titanpdf-bot\storage\database\titan_v8_ultimate.db",
         "user_query": "SELECT user_id, username, first_name, join_date, is_blocked FROM users",
         "channel_query": None 
     },
     {
         "name": "TitanSv_bot",
-        "path": r"D:\Projects\Bots\TitanSv_bot\data\users.db",
+        "path": r"D:\Projects\Bots\titansv-bot\data\users.db",
         "user_query": "SELECT user_id, username, full_name, join_date, is_banned FROM users",
         "channel_query": "SELECT chat_id, title, username, type, join_date FROM channels_groups"
     },
     {
         "name": "Fadhakir_bot",
-        "path": r"D:\Projects\Bots\Fadhakir_bot\data\Fadhakir_bot.db",
+        "path": r"D:\Projects\Bots\fadhakir-bot\data\Fadhakir_bot.db",
         "user_query": "SELECT user_id, username, full_name, created_at, 0 FROM users",
         "channel_query": "SELECT chat_id, title, username, chat_type, created_at FROM chats"
     }
