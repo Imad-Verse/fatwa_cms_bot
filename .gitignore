@@ -1,20 +1,102 @@
-venv/
-.venv/
-logs/
-uploads/
-temp/
+# ==============================================================================
+#                 Professional GitIgnore for Fatwa CMS Bot
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Environments & Sensitive Configs (CRITICAL Security)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+*.env
+*.env.json
+env.bak/
+venv.bak/
+instance/
+secrets/
+
+# ------------------------------------------------------------------------------
+# 2. Database & Local Storage
+# ------------------------------------------------------------------------------
+# Ignore all SQLite/local databases to prevent data leaks and repo bloat
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+data/*.db
+data/**/*.db
+data/*.sqlite
+data/*.sqlite3
+
+# Explicitly allow the fatwa database to be committed/tracked
+!data/fatwa_bot.db
+
+# Ignore local database backups but keep directory structure
+data/backups/*
+!data/backups/.gitkeep
+
+# ------------------------------------------------------------------------------
+# 3. Runtime & Logs
+# ------------------------------------------------------------------------------
+logs/*
+!logs/.gitkeep
 .titan_runtime/
-*.pyc
+cookies/
+*.tmp
+*.log
+
+# ------------------------------------------------------------------------------
+# 4. Temp & Uploads
+# ------------------------------------------------------------------------------
+temp/*
+!temp/.gitkeep
+uploads/*
+!uploads/.gitkeep
+
+# ------------------------------------------------------------------------------
+# 5. Python Compilation & Cache Files
+# ------------------------------------------------------------------------------
+__pycache__/
 *.py[cod]
 *$py.class
-__pycache__/
+*.so
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+build/
+dist/
+*.egg-info/
+.eggs/
 
-.env
+# ------------------------------------------------------------------------------
+# 6. Virtual Environments
+# ------------------------------------------------------------------------------
+venv/
+.venv/
+env/
+ENV/
 
-# Data and Databases
-!data/
-data/*
-!data/*.db
-!data/*.sqlite
-data/backups/
+# ------------------------------------------------------------------------------
+# 7. OS & IDE System Configuration
+# ------------------------------------------------------------------------------
+# Windows
+desktop.ini
+Thumbs.db
 
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDE / Editor Settings (VS Code, PyCharm, Sublime, etc.)
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.sublime-project
+*.sublime-workspace
